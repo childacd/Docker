@@ -1,0 +1,9 @@
+Regarding 5
+Similarly, I have defined scripts to execute during instance start/stop using systemd.
+When starting:
+
+Use 'aws ec2 create-volume xxx' to create two volumes, obtain their volume IDs, and attach them to the current instance.
+Mount paths on these two storage devices and create swap space.
+When stopping:
+Detach and delete these two volumes.
+Now that we have finished introducing the main tasks performed by user data, I have omitted some less significant parts to make the overall process as clear as possible. For example, in steps 3-4, when fetching 'docker-deploy.sh' or 'docker-compose.yml' from S3, the actual path in S3 includes the environment tag and mode information of the current instance. This makes it easy to understand, as scripts or image versions may differ across different environments and modes."
