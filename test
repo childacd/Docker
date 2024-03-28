@@ -1,0 +1,32 @@
+Start Service
+|
+V
+Execute Auto Attach Service Script
+|  
+|--------------------- Execute auto-attach.sh script. -------------------|
+|  
+| Script Content: 
+| - Identify attached volumes and instance ID.
+| - Create new volumes as needed.
+| - Attach new volumes to the instance.
+| - Mount paths on the attached volumes.
+| - Create swap space.
+|  
+V
+Completion
+
+
+Start Service
+|
+V
+Execute Detach and Delete Volume Script
+|  
+|--------------------- Execute detach-delete.sh script. -------------------|
+|  
+| Script Content: 
+| - Identify attached volumes.
+| - Detach volumes from the instance.
+| - Delete detached volumes.
+|  
+V
+Completion
