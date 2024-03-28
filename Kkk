@@ -1,0 +1,83 @@
+Based on the background and benefits just mentioned by Mantou, I will now explain in more detail the processes involved in each part. It will take approximately 5-6 minutes. After explaining, I will spend the last two to three minutes demonstrating how our current API works and the performance of the created instance.
+Let's take a look at this Swagger interface. We currently expose two APIs: "create instance" and "terminate instance." First, we will explain what happens behind the scenes in these API calls through several flowcharts, explaining how we implement the following processes:		
+How we create EC2 instances (this is the most straightforward part).
+* 		Why the created EC2 instances can run projects without deployment (this part is actually implemented by orange containerization, but for the sake of clarity, we will explain it here. This part involves a more intricate process, and I will use several diagrams to illustrate it).
+* 		Why the created EC2 instances implement auto attach-detach processes.
+Regarding the first part, the answer is straightforward. We now support multi-region because different regions require different configurations when creating EC2 instances (such as subnet ID, security group ID, IAM profile, etc.).
+
+We implement this not by configuring different region settings in the project but by fetching the relevant configuration of the current region (subnet ID, security group ID, etc.) when scaling up the service to start EC2 instances. Just as Seemanto mentioned, "spin up instance" automatically selects the latest AMI. Similarly, upon receiving each request, we query the supported architecture of the instance type. If it supports arm64, I will query for AMIs that meet three conditions and select the latest. If it is not a Graviton architecture, but supports x86_64, I will also query for AMIs meeting three conditions and select the latest. This way, we can ensure that the instances spun up are based on the latest AMIs.
+As a side note, because the scaling-up service will be launched in the required regions, we also have a part to discuss in the future, which is whether to expose a common entry point to FlexAgg in different regions, where this entry point forwards requests to different region...
+Now let's move on to the second item. The implementation of the second item is actually placed in the user data.
+User data is executed only once when the instance starts. The user data we currently use mainly does the following for the orange app:
+
+* 		System configuration.
+* 		Download Docker and start the Docker service.
+* 		rc-local.service.
+* 		orange-app-docker.service.
+* 		Auto-attach.service.
+Among these, 1-2 are parts that need to be executed only once, and 3-5 are all systemd services, which will execute the corresponding scripts every time the instance is stopped/started. Let's see what they do respectively.
+Regarding 3:
+rc-local.service
+-> Pull docker-deploy.sh from S3 to the instance every time it starts.
+
+Regarding 4:
+orange-app-docker.service
+Execute the docker-deploy.sh just pulled down by rc-local.service.
+The content of docker-deploy.sh includes installing Docker certificates, pulling docker-compose.yml from S3, pulling docker images from the repository according to the version defined in docker-compose.yml, and starting them. It also updates the tag information of the current instance (including the version information of the Docker image currently used by the instance).
+With this, 3-4 can ensure that the created instance does not need a separate deployment process (Jenkins -> Ansible). User data writes some scripts into systemd services, which are automatically executed when the instance starts. These scripts define the version and steps to pull Docker images, and this script and version information are stored in S3. This way, without touching the instance, we only need to change the contents of the file in S3 to update what the next instance startup deployment will execute and which image version to pull. Just like the illustration below:
+
+Start
+|
+V
+Start Service
+|
+V
+Fetch Docker Deployment Script
+|
+V
+Execute Docker Deployment Script
+|
+V
+Completion
+
+Start Service
+|
+V
+Fetch Docker Deployment Script
+|  
+|----------------- At each startup, pull docker-deploy.sh script from the specified S3 path to the instance. -------------|
+|  
+V
+Execute Docker Deployment Script
+|
+V
+Completion
+
+
+Start
+|
+V
+Start Service
+|
+V
+Execute Docker Deployment Script
+|
+V
+Completion
+
+Start Service
+|
+V
+Execute Docker Deployment Script
+|  
+|--------------------- Execute docker-deploy.sh script pulled by rc-local.service. -------------------|
+|  
+| Script Content: 
+| - Install Docker certificates.
+| - Fetch docker-compose.yml file from S3.
+| - Pull Docker images from the repository based on the defined version in docker-compose.yml and start them.
+| - Update the current instance's tag information, including the version information of the Docker image used.
+|  
+V
+Completion
+
