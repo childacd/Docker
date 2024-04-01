@@ -1,0 +1,140 @@
+import tkinter as tk
+from tkinter import ttk
+
+def populate_tree(tree, node):
+    if node.children:
+        for child in node.children:
+            child_node = tree.insert(node_id, 'end', text=child.name, open=True)
+            populate_tree(tree, child, child_node)
+    else:
+        tree.insert(node_id, 'end', text=node.name)
+
+def compare_and_colorize(tree1, tree2, parent):
+    for child1 in tree1.children:
+        match = False
+        for child2 in tree2.children:
+            if child1.name == child2.name:
+                match = True
+                break
+
+        if not match:
+            tree1.item(parent, tags=('diff',))
+            break
+
+    for child2 in tree2.children:
+        match = False
+        for child1 in tree1.children:
+            if child1.name == child2.name:
+                match = True
+                break
+
+        if not match:
+            tree2.item(parent, tags=('diff',))
+            break
+
+def show_differences():
+    tree1 = build_tree(box_structure1)
+    tree2 = build_tree(box_structure2)
+
+    root = tk.Tk()
+    root.title("Box Structure Differences")
+
+    frame = ttk.Frame(root)
+    frame.pack(fill='both', expand=True)
+
+    treeview1 = ttk.Treeview(frame)
+    treeview1.pack(side='left', fill='both', expand=True)
+
+    treeview2 = ttk.Treeview(frame)
+    treeview2.pack(side='right', fill='both', expand=True)
+
+    populate_tree(treeview1, tree1)
+    populate_tree(treeview2, tree2)
+
+    compare_and_colorize(tree1, tree2, '')
+
+    root.mainloop()
+
+if __name__ == "__main__":
+    # Your box structure data here
+    box_structure1 = {...}
+    box_structure2 = {...}
+
+    show_differences()
+
+
+def parse_jil_file(file_path):
+    job_definitions = {}
+    box_definitions = {}
+    current_job = None
+    current_box = None
+
+    with open(file_path, 'r') as file:
+        for line in file:
+            line = line.strip()
+            if line.startswith('insert_job:'):
+                job_name = re.search(r'insert_job:\s+(\S+)', line).group(1)
+                current_job = {'name': job_name, 'attributes': []}
+                job_definitions[job_name] = current_job
+                current_box = None
+            elif line.startswith('insert_box:'):
+                box_name = re.search(r'insert_box:\s+(\S+)', line).group(1)
+                current_box = {'name': box_name, 'attributes': [], 'children': []}
+                box_definitions[box_name] = current_box
+                if current_job:
+                    current_box['children'].append(current_job)
+                    current_job = None
+            elif current_job:
+                current_job['attributes'].append(line)
+            elif current_box:
+                current_box['attributes'].append(line)
+
+    return box_definitions
+
+if __name__ == "__main__":
+    jil_file1 = "path/to/first/jil/file"
+    jil_file2 = "path/to/second/jil/file"
+
+    box_structure1 = parse_jil_file(jil_file1)
+    box_structure2 = parse_jil_file(jil_file2)
+
+
+
+def compare_and_colorize(tree1, tree2, parent):
+    for child1 in tree1['children']:
+        match = False
+        for child2 in tree2['children']:
+            if child1['name'] == child2['name']:
+                match = True
+                if child1['attributes'] != child2['attributes']:
+                    tree1['tags'] = ('diff',)
+                compare_and_colorize(child1, child2, tree1)
+                break
+
+        if not match:
+            tree1['tags'] = ('diff',)
+
+    for child2 in tree2['children']:
+        match = False
+        for child1 in tree1['children']:
+            if child1['name'] == child2['name']:
+                match = True
+                if child1['attributes'] != child2['attributes']:
+                    tree2['tags'] = ('diff',)
+                compare_and_colorize(child1, child2, tree2)
+                break
+
+        if not match:
+            tree2['tags'] = ('diff',)
+
+if __name__ == "__main__":
+    jil_file1 = "path/to/first/jil/file"
+    jil_file2 = "path/to/second/jil/file"
+
+    box_structure1 = parse_jil_file(jil_file1)
+    box_structure2 = parse_jil_file(jil_file2)
+
+    compare_and_colorize(box_structure1['root'], box_structure2['root'], None)
+
+
+
