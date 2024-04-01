@@ -1,0 +1,79 @@
+import re
+
+def parse_jil_file(file_path):
+    job_definitions = {}
+    box_definitions = {}
+    current_job = None
+    current_box = None
+
+    with open(file_path, 'r') as file:
+        for line in file:
+            line = line.strip()
+            if line.startswith('insert_job:'):
+                job_name = re.search(r'insert_job:\s+(\S+)', line).group(1)
+                current_job = {'job_name': job_name, 'attributes': []}
+                job_definitions[job_name] = current_job
+                current_box = None
+            elif line.startswith('insert_box:'):
+                box_name = re.search(r'insert_box:\s+(\S+)', line).group(1)
+                current_box = {'box_name': box_name, 'jobs': []}
+                box_definitions[box_name] = current_box
+            elif current_job:
+                current_job['attributes'].append(line)
+            elif current_box:
+                current_box['jobs'].append(line)
+
+    return job_definitions, box_definitions
+
+def compare_job_structures(job_structure1, job_structure2):
+    job_names1 = set(job_structure1.keys())
+    job_names2 = set(job_structure2.keys())
+
+    if job_names1 != job_names2:
+        print("Job names differ between the two sets.")
+        return False
+
+    for job_name in job_names1:
+        attributes1 = job_structure1[job_name]['attributes']
+        attributes2 = job_structure2[job_name]['attributes']
+
+        if sorted(attributes1) != sorted(attributes2):
+            print(f"Job {job_name} has different attributes.")
+            return False
+
+    print("Job structures are identical.")
+    return True
+
+def compare_box_structures(box_structure1, box_structure2):
+    box_names1 = set(box_structure1.keys())
+    box_names2 = set(box_structure2.keys())
+
+    if box_names1 != box_names2:
+        print("Box names differ between the two sets.")
+        return False
+
+    for box_name in box_names1:
+        jobs1 = set(box_structure1[box_name]['jobs'])
+        jobs2 = set(box_structure2[box_name]['jobs'])
+
+        if jobs1 != jobs2:
+            print(f"Box {box_name} has different job composition.")
+            return False
+
+    print("Box structures are identical.")
+    return True
+
+if __name__ == "__main__":
+    jil_file1 = "/v_1/all.JIL"
+    jil_file2 = "/v_2/a_1.jil"
+
+    job_structure1, box_structure1 = parse_jil_file(jil_file1)
+    job_structure2, box_structure2 = parse_jil_file(jil_file2)
+
+    job_comparison = compare_job_structures(job_structure1, job_structure2)
+    box_comparison = compare_box_structures(box_structure1, box_structure2)
+
+    if job_comparison and box_comparison:
+        print("Both job and box structures are identical.")
+    else:
+        print("There are differences between job or box structures.")
