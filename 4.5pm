@@ -1,0 +1,56 @@
+import re
+
+class TreeNode:
+    def __init__(self, name, attributes=None):
+        self.name = name
+        self.attributes = attributes or {}
+        self.children = []
+
+def parse_jil_file(file_path):
+    job_definitions = {}
+    box_definitions = {}
+    current_box = None
+    parent_boxes = []
+
+    with open(file_path, 'r') as file:
+        root_box = None
+        for line in file:
+            line = line.strip()
+            if line.startswith('insert_job:'):
+                job_name = re.search(r'insert_job:\s+(\S+)', line).group(1)
+                current_job = {'name': job_name, 'attributes': {}}
+                if parent_boxes:
+                    parent_boxes[-1]['children'].append(current_job)
+                job_definitions[job_name] = current_job
+            elif line.startswith('insert_box:'):
+                box_name = re.search(r'insert_box:\s+(\S+)', line).group(1)
+                current_box = {'name': box_name, 'attributes': {}, 'children': []}
+                if parent_boxes:
+                    parent_boxes[-1]['children'].append(current_box)
+                else:
+                    if root_box:
+                        root_box['children'].append(current_box)
+                    else:
+                        box_definitions['root'] = current_box
+                parent_boxes.append(current_box)
+            elif line.startswith('box_name:'):
+                box_name = re.search(r'box_name:\s+(\S+)', line).group(1)
+                # Check if the box is not in the parent_boxes stack
+                while parent_boxes and parent_boxes[-1]['name'] != box_name:
+                    # Move up the parent_boxes stack until the box is found
+                    parent_boxes.pop()
+                if parent_boxes:
+                    # Found the parent box, update current_box
+                    current_box = parent_boxes[-1]
+            elif line.strip():
+                parts = line.split(':')
+                key = parts[0].strip()
+                value = ':'.join(parts[1:]).strip()
+                current_box['attributes'][key] = value
+
+    return box_definitions
+
+if __name__ == "__main__":
+    jil_file1 = "sample.jil"
+
+    box_structure = parse_jil_file(jil_file1)
