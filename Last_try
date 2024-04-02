@@ -1,0 +1,99 @@
+class Node:
+    def __init__(self, name, attributes=None):
+        self.name = name
+        self.attributes = attributes or {}
+        self.children = []
+
+def parse_jil(jil_content):
+    jobs = {}
+    for line in jil_content.split('\n'):
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        key, value = line.split(':', 1)
+        key = key.strip()
+        value = value.strip()
+        jobs.setdefault(key, []).append(value)
+
+    root_jobs = []
+    for job_name, attributes in jobs.items():
+        job_type = attributes[0]
+        if job_type == 'b':
+            root_jobs.append(job_name)
+
+    if len(root_jobs) == 1:
+        root_name = root_jobs[0]
+    else:
+        root_name = 'Root'
+
+    root_node = Node(root_name)
+    for job_name, attributes in jobs.items():
+        job_type = attributes[0]
+        box_name = attributes[1] if len(attributes) > 1 else None
+
+        job_node = Node(job_name, {'group': attributes[2]})
+
+        if job_type == 'b':
+            if not box_name:
+                continue
+            box_node = Node(box_name, {'group': attributes[2]})
+            box_node.children.append(job_node)
+            root_node.children.append(box_node)
+        else:
+            if not box_name:
+                root_node.children.append(job_node)
+            else:
+                for node in root_node.children:
+                    if node.name == box_name:
+                        node.children.append(job_node)
+                        break
+
+    return root_node
+
+def print_tree(node, depth=0):
+    indent = ' ' * (depth * 2)
+    print(f"{indent}{node.name} - {node.attributes}")
+    for child in node.children:
+        print_tree(child, depth + 1)
+
+jil_content = """
+insert_job: download_box
+group: DEV_EEM
+job_type: b
+
+insert_job: download_data_box
+group: DEV_EEM
+job_type: b
+box_name: download_box
+
+insert_job: download_data_script
+group: DEV_EEM
+job_type: c
+command: python xxx.py
+box_name: download_data_box
+
+insert_job: download_data_script_2
+group: DEV_EEM
+job_type: c
+command: python xxx2.py
+box_name: download_data_box
+
+insert_job: download_level_script
+group: DEV_EEM
+job_type: c
+command: python xxx3.py
+box_name: download_box
+
+insert_job: download_copy_box
+group: DEV_EEM
+job_type: b
+box_name: download_box
+
+insert_job: download_copy_script
+group: DEV_EEM
+job_type: c
+command: python fake.py
+"""
+
+root_node = parse_jil(jil_content)
+print_tree(root_node)
