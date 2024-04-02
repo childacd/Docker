@@ -1,0 +1,91 @@
+import re
+
+class TreeNode:
+    def __init__(self, name, attributes=None):
+        self.name = name
+        self.attributes = attributes or []
+        self.children = []
+
+def parse_jil_file(file_path):
+    job_definitions = {}
+    box_definitions = {}
+    current_box = None
+    parent_boxes = []
+
+    with open(file_path, 'r') as file:
+        root_box = None
+        for line in file:
+            line = line.strip()
+            if line.startswith('insert_job:'):
+                job_name = re.search(r'insert_job:\s+(\S+)', line).group(1)
+                job_type_match = re.search(r'job_type:\s+(\S+)', line)
+                if job_type_match:
+                    job_type = job_type_match.group(1)
+                    if job_type == 'b':
+                        parent_box = current_box
+                        current_box = {'name': job_name, 'attributes': [], 'children': []}
+                        if parent_box:
+                            parent_box['children'].append(current_box)
+                        else:
+                            if root_box:
+                                root_box['children'].append(current_box)
+                            else:
+                                box_definitions[job_name] = current_box
+                        parent_boxes.append(current_box)
+                    else:
+                        current_job = {'name': job_name, 'attributes': []}
+                        parent_boxes[-1]['children'].append(current_job)
+                        job_definitions[job_name] = current_job
+                else:
+                    current_job = {'name': job_name, 'attributes': []}
+                    parent_boxes[-1]['children'].append(current_job)
+                    job_definitions[job_name] = current_job
+            elif line.startswith('job_type:') and not current_box:
+                job_type = re.search(r'job_type:\s+(\S+)', line).group(1)
+                if job_type == 'b':
+                    parent_box = current_box
+                    current_box = {'name': job_name, 'attributes': [], 'children': []}
+                    if parent_box:
+                        parent_box['children'].append(current_box)
+                    else:
+                        if root_box:
+                            root_box['children'].append(current_box)
+                        else:
+                            box_definitions[job_name] = current_box
+                    parent_boxes.append(current_box)
+            elif current_box:
+                if line.startswith('box_name:'):
+                    box_name = re.search(r'box_name:\s+(\S+)', line).group(1)
+                    parent_boxes[-1]['name'] = box_name
+                elif line.startswith('insert_job:'):
+                    job_name = re.search(r'insert_job:\s+(\S+)', line).group(1)
+                    current_job = {'name': job_name, 'attributes': []}
+                    current_box['children'].append(current_job)
+                    job_definitions[job_name] = current_job
+                elif line.startswith('job_type:'):
+                    job_type = re.search(r'job_type:\s+(\S+)', line).group(1)
+                    if job_type == 'b':
+                        parent_box = current_box
+                        current_box = {'name': job_name, 'attributes': [], 'children': []}
+                        parent_box['children'].append(current_box)
+                        parent_boxes.append(current_box)
+                elif line.startswith('insert_box:'):
+                    box_name = re.search(r'insert_box:\s+(\S+)', line).group(1)
+                    current_box = {'name': box_name, 'attributes': [], 'children': []}
+                    if not root_box:
+                        root_box = current_box
+                        box_definitions['root'] = root_box
+                    else:
+                        parent_boxes[-1]['children'].append(current_box)
+                    parent_boxes.append(current_box)
+                else:
+                    current_box['attributes'].append(line)
+
+    return box_definitions
+
+if __name__ == "__main__":
+    jil_file1 = "path/to/first/jil/file"
+    jil_file2 = "path/to/second/jil/file"
+
+    box_structure1 = parse_jil_file(jil_file1)
+    box_structure2 = parse_jil_file(jil_file2)
