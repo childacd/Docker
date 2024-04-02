@@ -1,0 +1,47 @@
+import re
+
+class TreeNode:
+    def __init__(self, name, attributes=None):
+        self.name = name
+        self.attributes = attributes or []
+        self.children = []
+
+def parse_jil_file(file_path):
+    job_definitions = {}
+    box_definitions = {}
+    current_job = None
+    current_box = None
+
+    with open(file_path, 'r') as file:
+        for line in file:
+            line = line.strip()
+            if line.startswith('insert_job:'):
+                job_name = re.search(r'insert_job:\s+(\S+)', line).group(1)
+                current_job = {'name': job_name, 'attributes': []}
+                job_definitions[job_name] = current_job
+                
+                # Check if box_name attribute is defined
+                box_name_match = re.search(r'box_name:\s+(\S+)', line)
+                if box_name_match:
+                    box_name = box_name_match.group(1)
+                    current_job['box_name'] = box_name
+                    if box_name in box_definitions:
+                        box_definitions[box_name]['children'].append(current_job)
+            elif line.startswith('insert_box:'):
+                box_name = re.search(r'insert_box:\s+(\S+)', line).group(1)
+                current_box = {'name': box_name, 'attributes': [], 'children': []}
+                box_definitions[box_name] = current_box
+                current_job = None
+            elif current_job:
+                current_job['attributes'].append(line)
+            elif current_box:
+                current_box['attributes'].append(line)
+
+    return box_definitions
+
+if __name__ == "__main__":
+    jil_file1 = "path/to/first/jil/file"
+    jil_file2 = "path/to/second/jil/file"
+
+    box_structure1 = parse_jil_file(jil_file1)
+    box_structure2 = parse_jil_file(jil_file2)
