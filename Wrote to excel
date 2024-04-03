@@ -1,0 +1,52 @@
+import pandas as pd
+
+def compare_jobs(job_definitions1, job_definitions2):
+    different_jobs = []
+
+    # 遍历每个 job 名称，比较它们的属性
+    for job_name in job_definitions1.keys():
+        if job_name in job_definitions2:
+            job1 = job_definitions1[job_name]
+            job2 = job_definitions2[job_name]
+
+            # 比较两个 job 的属性字典
+            diff = {}
+            for key in job1:
+                if key in job2 and job1[key] != job2[key]:
+                    diff[key] = (job1[key], job2[key])
+            if diff:
+                different_jobs.append((job_name, diff))
+
+    return different_jobs
+
+def write_diff_to_excel(different_jobs):
+    # 创建 Excel writer 对象
+    writer = pd.ExcelWriter('job_diff.xlsx', engine='openpyxl')
+
+    # 写入第一个页面：相同 job 不同的属性
+    df_diff = pd.DataFrame(columns=['job_name', 'field', 'Job_definition1', 'Job_definition2'])
+    for job_name, diff in different_jobs:
+        for field, values in diff.items():
+            df_diff = df_diff.append({'job_name': job_name, 'field': field, 'Job_definition1': values[0], 'Job_definition2': values[1]}, ignore_index=True)
+    df_diff.to_excel(writer, sheet_name='Different_Attributes', index=False)
+
+    # 写入第二个页面：两套 job 相比，哪些 job 是对方没有的
+    all_jobs = set([job[0] for job in different_jobs])
+    df_missing = pd.DataFrame(columns=['missing_job_name'])
+    for job_name in all_jobs:
+        df_missing = df_missing.append({'missing_job_name': job_name}, ignore_index=True)
+    df_missing.to_excel(writer, sheet_name='Missing_Jobs', index=False)
+
+    # 保存并关闭 Excel 文件
+    writer.save()
+
+if __name__ == "__main__":
+    # 示例 job_definitions
+    job_definitions1 = {...}  # 第一个 jil 文件的 job_definitions
+    job_definitions2 = {...}  # 第二个 jil 文件的 job_definitions
+
+    # 比较两个 job_definitions
+    different_jobs = compare_jobs(job_definitions1, job_definitions2)
+
+    # 将差异写入 Excel 文件
+    write_diff_to_excel(different_jobs)
