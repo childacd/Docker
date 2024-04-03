@@ -1,0 +1,62 @@
+def compare_attribute_dicts(attr_dict1, attr_dict2):
+    # 检查两个字典的键值对数量是否一致
+    diff_keys = set(attr_dict1.keys()) ^ set(attr_dict2.keys())
+    if diff_keys:
+        # 如果键值对数量不一致，返回差异的键
+        added_keys = diff_keys.intersection(attr_dict2.keys())
+        removed_keys = diff_keys.intersection(attr_dict1.keys())
+        return f"Added keys: {'<>' if added_keys else ''}{', '.join(added_keys)}{'<>' if added_keys else ''}\nRemoved keys: {'<>' if removed_keys else ''}{', '.join(removed_keys)}{'<>' if removed_keys else ''}"
+
+    # 初始化差异列表
+    diff = []
+
+    # 比较两个字典的键值对
+    for key in attr_dict1:
+        if key in attr_dict2:
+            if attr_dict1[key] != attr_dict2[key]:
+                # 如果值不同，则将差异部分用 <> 包裹起来
+                diff.append(f"{key}: <{attr_dict1[key]}> vs <{attr_dict2[key]}>")
+        else:
+            # 如果一个键在 attr_dict1 中但不在 attr_dict2 中，将其添加到差异列表中
+            diff.append(f"{key}: <{attr_dict1[key]}>")
+
+    return '\n'.join(diff) if diff else None
+
+def compare_jobs(job_definitions1, job_definitions2):
+    # 找到两个集合中的所有不同的 job 名称
+    all_jobs = set(job_definitions1.keys()) | set(job_definitions2.keys())
+    different_jobs = []
+
+    # 遍历每个 job 名称，比较它们的属性
+    for job_name in all_jobs:
+        job1 = job_definitions1.get(job_name, {})
+        job2 = job_definitions2.get(job_name, {})
+
+        # 检查 job 是否存在于两个集合中
+        if job_name in job_definitions1 and job_name in job_definitions2:
+            # 比较两个 job 的属性字典
+            diff = compare_attribute_dicts(job1, job2)
+            # 添加到不同的 jobs 列表中
+            if diff:
+                different_jobs.append((job_name, diff))
+        elif job_name in job_definitions1:
+            # 只在第一个集合中存在的 job
+            different_jobs.append((job_name, [f"{key}: <{job1[key]}>" for key in job1]))
+        else:
+            # 只在第二个集合中存在的 job
+            different_jobs.append((job_name, [f"{key}: <{job2[key]}>" for key in job2]))
+
+    return different_jobs
+
+if __name__ == "__main__":
+    # 示例 job_definitions
+    job_definitions1 = {...}  # 第一个 jil 文件的 job_definitions
+    job_definitions2 = {...}  # 第二个 jil 文件的 job_definitions
+
+    # 比较两个 job_definitions
+    different_jobs = compare_jobs(job_definitions1, job_definitions2)
+
+    # 输出不同的 jobs
+    for job_name, diff in different_jobs:
+        print(f"{job_name}:")
+        print(diff)
