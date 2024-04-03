@@ -1,0 +1,54 @@
+import difflib
+from colorama import init, Fore
+
+init(autoreset=True)
+
+def compare_jobs(job_definitions1, job_definitions2):
+    # 找到两个集合中的所有不同的 job 名称
+    all_jobs = set(job_definitions1.keys()) | set(job_definitions2.keys())
+    different_jobs = []
+
+    # 遍历每个 job 名称，比较它们的属性
+    for job_name in all_jobs:
+        job1 = job_definitions1.get(job_name, {})
+        job2 = job_definitions2.get(job_name, {})
+
+        # 检查 job 是否存在于两个集合中
+        if job_name in job_definitions1 and job_name in job_definitions2:
+            # 比较两个 job 的属性
+            diff = []
+            for key in job1:
+                if key in job2:
+                    if job1[key] != job2[key]:
+                        # 使用 difflib 库找出不同的地方并标红
+                        differ = difflib.ndiff(job1[key].splitlines(), job2[key].splitlines())
+                        diff.append(''.join([Fore.RED + x if x.startswith('+') or x.startswith('-') else x for x in differ]))
+                else:
+                    # job2 中没有的属性
+                    diff.append(f"{Fore.RED}{key}={job1[key]}")
+
+            # 添加到不同的 jobs 列表中
+            if diff:
+                different_jobs.append((job_name, diff))
+        elif job_name in job_definitions1:
+            # 只在第一个集合中存在的 job
+            different_jobs.append((job_name, [f"{Fore.RED}{key}={job1[key]}" for key in job1]))
+        else:
+            # 只在第二个集合中存在的 job
+            different_jobs.append((job_name, [f"{Fore.RED}{key}={job2[key]}" for key in job2]))
+
+    return different_jobs
+
+if __name__ == "__main__":
+    # 两个 jil 文件的 job_definitions
+    job_definitions1 = {...}  # 第一个 jil 文件的 job_definitions
+    job_definitions2 = {...}  # 第二个 jil 文件的 job_definitions
+
+    # 比较两个 job_definitions
+    different_jobs = compare_jobs(job_definitions1, job_definitions2)
+
+    # 输出不同的 jobs
+    for job_name, diff in different_jobs:
+        print(f"{job_name}:")
+        for d in diff:
+            print(d)
