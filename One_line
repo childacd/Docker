@@ -1,0 +1,1 @@
+df_diff = pd.concat([df_diff, pd.DataFrame({'job_name': [job_name], 'field': [field], 'Job_definition1': [values[0]], 'Job_definition2': [values[1]]})], ignore_index=True)
