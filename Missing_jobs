@@ -1,0 +1,26 @@
+def find_missing_jobs(job_definitions1, job_definitions2):
+    missing_jobs_in_1 = set(job_definitions2.keys()) - set(job_definitions1.keys())
+    missing_jobs_in_2 = set(job_definitions1.keys()) - set(job_definitions2.keys())
+    return missing_jobs_in_1, missing_jobs_in_2
+
+def write_missing_jobs_to_excel(missing_jobs_in_1, missing_jobs_in_2):
+    writer = pd.ExcelWriter('job_diff.xlsx', engine='openpyxl')
+
+    # 写入第二个页面：两套 job 相比，哪些 job 是对方没有的
+    df_missing_in_1 = pd.DataFrame({'Job_definition1': list(missing_jobs_in_1)})
+    df_missing_in_2 = pd.DataFrame({'Job_definition2': list(missing_jobs_in_2)})
+    df_missing_in_1.to_excel(writer, sheet_name='Missing_Jobs', startrow=0, index=False)
+    df_missing_in_2.to_excel(writer, sheet_name='Missing_Jobs', startrow=len(df_missing_in_1) + 2, index=False)
+
+    writer.save()
+
+if __name__ == "__main__":
+    # 示例 job_definitions
+    job_definitions1 = {...}  # 第一个 jil 文件的 job_definitions
+    job_definitions2 = {...}  # 第二个 jil 文件的 job_definitions
+
+    # 找出两个集合中彼此不存在的 job
+    missing_jobs_in_1, missing_jobs_in_2 = find_missing_jobs(job_definitions1, job_definitions2)
+
+    # 将缺失的 jobs 写入 Excel 文件
+    write_missing_jobs_to_excel(missing_jobs_in_1, missing_jobs_in_2)
