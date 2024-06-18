@@ -1,0 +1,44 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use Getopt::Long;
+use Data::Dumper;
+
+# 定义嵌套的哈希
+my %config = (
+    "prod" => {
+        "sections" => {
+            "test" => "test2",
+            "CFST15" => "asc"
+            # ... 省略其他键值对
+        },
+        "env" => "prod",
+        "environment" => "production"
+    },
+    "dev" => {
+        "sections" => {
+           
+            "Noop" => "NIPF"
+            # ... 省略其他键值对
+        },
+        "env" => "dev",
+        "environment" => "development"
+    }
+);
+
+# 声明变量
+my $section;
+my $sft_argus;
+
+# 获取命令行参数
+GetOptions("section=s" => \$section, "sft_argus=s" => \$sft_argus) or die "Error in command line arguments\n";
+
+# 检查section是否有效
+die "Invalid section" unless defined $section and exists $config{$section};
+
+# 访问配置
+my $env = $config{$section}{"env"};
+my $environment = $config{$section}{"environment"};
+my $sections = $config{$section}{"sections"};
+
+print Dumper($sections);
