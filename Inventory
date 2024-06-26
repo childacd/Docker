@@ -1,0 +1,29 @@
+import os
+import yaml
+
+def generate_inventory(path="."):
+    # 获取指定路径下的所有文件名
+    files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
+    
+    inventory_data = {}
+
+    # 生成inventory.yml的数据结构
+    for idx, file_name in enumerate(files, start=1):
+        host_name = f"host-{file_name}"
+        inventory_data[file_name] = {
+            "hosts": {
+                host_name
+            }
+        }
+    
+    # 将数据写入inventory.yml文件
+    with open("inventory.yml", "w") as yaml_file:
+        yaml.dump(inventory_data, yaml_file, default_flow_style=False)
+
+if __name__ == "__main__":
+    # 获取用户输入的路径，如果没有输入则使用当前路径
+    user_input = input("请输入路径（默认当前路径）: ").strip()
+    scan_path = user_input if user_input else "."
+
+    generate_inventory(scan_path)
+    print("已生成 inventory.yml 文件。")
