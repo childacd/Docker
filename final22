@@ -1,0 +1,73 @@
+import os
+import sys
+import glob
+
+def parse_file(filename):
+    """Parse the key-value pairs from the given file."""
+    with open(filename, 'r') as file:
+        lines = file.readlines()
+        data = {}
+        for line in lines:
+            key, value = line.strip().split(': ')
+            if key in data:
+                data[key].append((value, filename))
+            else:
+                data[key] = [(value, filename)]
+        return data
+
+def find_common_and_different_pairs(files):
+    """Find common and different key-value pairs across all given files."""
+    common_pairs = {}
+    different_pairs = {}
+    
+    for filename in files:
+        pairs = parse_file(filename)
+        for key, value_list in pairs.items():
+            values = [v[0] for v in value_list]
+            if key in common_pairs:
+                common_pairs[key] = list(set(common_pairs[key]) & set(values))
+            else:
+                common_pairs[key] = values
+
+            if key in different_pairs:
+                different_pairs[key].extend([(v, filename) for v in value_list if v[0] not in different_pairs[key]])
+            else:
+                different_pairs[key] = [(v, filename) for v in value_list]
+
+    return common_pairs, different_pairs
+
+def main():
+    # Check if an argument is provided
+    if len(sys.argv) != 2:
+        print("Usage: python script.py <suffix>")
+        return
+
+    suffix = sys.argv[1]
+    # Find all files with specified suffix in the current directory
+    files = glob.glob(f"*.{suffix}")
+    
+    if not files:
+        print(f"No files found with '{suffix}' suffix in the current directory.")
+        return
+
+    # Find common and different key-value pairs across all files
+    common_pairs, different_pairs = find_common_and_different_pairs(files)
+    
+    # Write common pairs to a new file named with the suffix
+    output_filename = f"{suffix}"
+    with open(output_filename, 'w') as outfile:
+        outfile.write("Common key-value pairs:\n")
+        for key, values in common_pairs.items():
+            for value in values:
+                outfile.write(f"{key}: {value}\n")
+
+    # Print different pairs
+    print("Different key-value pairs:")
+    for key, value_list in different_pairs.items():
+        for value, filename in value_list:
+            print(f"{key}: {value} (from {filename})")
+
+    print(f"Output written to '{output_filename}'.")
+
+if __name__ == "__main__":
+    main()
