@@ -1,0 +1,44 @@
+import os
+import glob
+
+def parse_file(filename):
+    """Parse the key-value pairs from the given file."""
+    with open(filename, 'r') as file:
+        lines = file.readlines()
+        data = {}
+        for line in lines:
+            key, value = line.strip().split(': ')
+            data[key] = value
+        return data
+
+def find_common_pairs(files):
+    """Find common key-value pairs across all given files."""
+    common_pairs = None
+    for filename in files:
+        pairs = parse_file(filename)
+        if common_pairs is None:
+            common_pairs = pairs
+        else:
+            common_pairs = {k: v for k, v in pairs.items() if k in common_pairs and common_pairs[k] == v}
+    return common_pairs
+
+def main():
+    # Find all files with .xx suffix in the current directory
+    files = glob.glob("*.xx")
+    
+    if not files:
+        print("No .xx files found in the current directory.")
+        return
+
+    # Find common key-value pairs across all files
+    common_pairs = find_common_pairs(files)
+    
+    # Write common pairs to a new file named 'xx'
+    with open('xx', 'w') as outfile:
+        for key, value in common_pairs.items():
+            outfile.write(f"{key}: {value}\n")
+
+    print(f"Common key-value pairs have been written to 'xx'.")
+
+if __name__ == "__main__":
+    main()
