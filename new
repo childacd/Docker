@@ -59,6 +59,9 @@ def remove_common_pairs_from_files(all_pairs, common_pairs):
         write_file(filename, updated_pairs)
 
 def main():
+    # Get the current script's filename
+    script_filename = os.path.basename(__file__)
+
     # Determine suffix and files to process
     if len(sys.argv) == 2:
         suffix = sys.argv[1]
@@ -67,6 +70,9 @@ def main():
     else:
         files = glob.glob("*")
         output_filename = "all"
+    
+    # Exclude the script file itself
+    files = [f for f in files if f != script_filename]
     
     if not files:
         print(f"No files found to process.")
