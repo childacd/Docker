@@ -1,0 +1,37 @@
+import os
+import re
+import sys
+
+def read_file(file_path):
+    with open(file_path, 'r', encoding='utf-8') as file:
+        return file.read()
+
+def search_legal_in_file(file_path, search_string, include_pattern):
+    content = read_file(file_path)
+    if search_string in content:
+        print(f"Found '{search_string}' in {file_path}")
+
+    includes = re.findall(include_pattern, content)
+    for include_file in includes:
+        include_file_path = os.path.join(os.path.dirname(file_path), include_file)
+        if os.path.exists(include_file_path):
+            search_legal_in_file(include_file_path, search_string, include_pattern)
+
+def main(search_dir, file_extension, search_string):
+    include_pattern = r"\{\%\s*include\s*['\"]([^'\"]+)['\"]\s*-\%\}"
+    for root, _, files in os.walk(search_dir):
+        for file in files:
+            if file.endswith(file_extension):
+                file_path = os.path.join(root, file)
+                search_legal_in_file(file_path, search_string, include_pattern)
+
+if __name__ == "__main__":
+    if len(sys.argv) != 4:
+        print("Usage: python search_j2_files.py <search_dir> <file_extension> <search_string>")
+        sys.exit(1)
+
+    search_dir = sys.argv[1]
+    file_extension = sys.argv[2]
+    search_string = sys.argv[3]
+
+    main(search_dir, file_extension, search_string)
