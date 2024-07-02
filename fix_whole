@@ -1,0 +1,39 @@
+import os
+
+def extract_entity_and_machine(project_path, environment, new_jil_path, old_jil_folders_path):
+    # 构建法人实体文件的路径
+    legal_entity_path = os.path.join(project_path, "ansible", environment, "group_vars")
+    # 获取法人实体列表，并转化为大写以方便比较
+    legal_entities = [filename.split('.')[0].upper()  # Assuming files have extensions
+                      for filename in os.listdir(legal_entity_path)
+                      if os.path.isfile(os.path.join(legal_entity_path, filename))]
+    
+    # 构建新JIL文件的路径
+    new_jil_files_path = os.path.join(project_path, new_jil_path)
+    # 存储结果的列表
+    results = []
+
+    # 遍历新JIL目录中的所有文件
+    for filename in os.listdir(new_jil_files_path):
+        if filename.startswith("PSFT") and filename.endswith("_BOX.jil"):
+            # 移除前缀'PSFT'和后缀'_BOX.jil'
+            core_part = filename[4:-8]
+            # 尝试匹配法人实体
+            for entity in legal_entities:
+                if entity in core_part.upper():
+                    # 提取法人实体后面的部分作为机器名称
+                    start_index = core_part.upper().find(entity) + len(entity)
+                    machine_name = core_part[start_index:]
+                    if machine_name:
+                        results.append((entity, machine_name))
+                        break  # 假设一个文件名中只有一个法人实体
+
+    return results
+
+# 示例调用
+project_path = "/path/to/project"
+environment = "dev"
+new_jil_path = "path/to/new/jils"
+old_jil_folders_path = "path/to/old/jils"
+result = extract_entity_and_machine(project_path, environment, new_jil_path, old_jil_folders_path)
+print(result)
