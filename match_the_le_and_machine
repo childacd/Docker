@@ -1,0 +1,35 @@
+import os
+
+def extract_entity_and_machine(project_path, environment, new_jil_path, old_jil_folders_path):
+    # 构建legal entity文件的路径
+    legal_entity_path = os.path.join(project_path, "ansible", environment, "group_vars")
+    # 获取legal entity列表
+    legal_entities = [filename.split('.')[0]  # Assuming the files have extensions and you want to remove them
+                      for filename in os.listdir(legal_entity_path)
+                      if os.path.isfile(os.path.join(legal_entity_path, filename))]
+    
+    # 构建new jil文件的路径
+    new_jil_files_path = os.path.join(project_path, new_jil_path)
+    # 存储结果的列表
+    results = []
+
+    # 遍历new jil目录中的所有文件
+    for filename in os.listdir(new_jil_files_path):
+        if filename.startswith("PSFT") and filename.endswith("_BOX.jil"):
+            # 分解文件名以检查是否包含已知的legal entity
+            parts = filename[4:-8].split('_')  # Remove 'PSFT' prefix and '_BOX.jil' suffix
+            possible_entity = parts[0]
+            # 确认这是一个合法的legal entity
+            if possible_entity.upper() in (entity.upper() for entity in legal_entities):
+                machine_name = '_'.join(parts[1:])  # 假设machine_name是entity后面的所有部分
+                results.append((possible_entity, machine_name))
+    
+    return results
+
+# 示例调用
+project_path = "/path/to/project"
+environment = "dev"
+new_jil_path = "path/to/new/jils"
+old_jil_folders_path = "path/to/old/jils"
+result = extract_entity_and_machine(project_path, environment, new_jil_path, old_jil_folders_path)
+print(result)
