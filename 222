@@ -1,9 +1,29 @@
-Regarding 5
-Similarly, I have defined scripts to execute during instance start/stop using systemd.
-When starting:
+import os
+import pandas as pd
 
-Use 'aws ec2 create-volume xxx' to create two volumes, obtain their volume IDs, and attach them to the current instance.
-Mount paths on these two storage devices and create swap space.
-When stopping:
-Detach and delete these two volumes.
-Now that we have finished introducing the main tasks performed by user data, I have omitted some less significant parts to make the overall process as clear as possible. For example, in steps 3-4, when fetching 'docker-deploy.sh' or 'docker-compose.yml' from S3, the actual path in S3 includes the environment tag and mode information of the current instance. This makes it easy to understand, as scripts or image versions may differ across different environments and modes."
+def generate_command_table(directory_path, legal_entities):
+    # 目录中的所有文件夹
+    directories = [d for d in os.listdir(directory_path) if os.path.isdir(os.path.join(directory_path, d))]
+    # 准备存储结果的列表
+    data = []
+    
+    # 遍历每个目录，提取legal entity和machine name
+    for directory in directories:
+        for entity in legal_entities:
+            if directory.upper().startswith(entity.upper()):
+                machine_name = directory[len(entity):]
+                command = f"ansible-playbook -i dev/ -l {entity} generate-jil.yml -e machine={machine_name}"
+                data.append({"Directory Name": directory, "Command": command})
+                break
+
+    # 使用pandas创建DataFrame
+    df = pd.DataFrame(data)
+    # 保存到CSV文件
+    df.to_csv("ansible_commands.csv", index=False)
+    return df
+
+# 示例调用
+directory_path = "/path/to/directory/with/subfolders"
+legal_entities = ["Entity1", "Entity2", "Entity3"]  # 应从文件读取或其他方式获得
+df = generate_command_table(directory_path, legal_entities)
+print(df)
