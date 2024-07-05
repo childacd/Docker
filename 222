@@ -27,3 +27,20 @@ directory_path = "/path/to/directory/with/subfolders"
 legal_entities = ["Entity1", "Entity2", "Entity3"]  # 应从文件读取或其他方式获得
 df = generate_command_table(directory_path, legal_entities)
 print(df)
+
+import pandas as pd
+import subprocess
+
+def run_ansible_commands(csv_file):
+    # 读取CSV文件
+    df = pd.read_csv(csv_file)
+    
+    # 遍历每行执行命令
+    for index, row in df.iterrows():
+        print(f"Executing: {row['Command']}")
+        # 使用subprocess运行命令
+        subprocess.run(row['Command'], shell=True)
+
+# 示例调用
+run_ansible_commands("ansible_commands.csv")
+
