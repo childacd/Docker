@@ -44,3 +44,22 @@ def run_ansible_commands(csv_file):
 # 示例调用
 run_ansible_commands("ansible_commands.csv")
 
+
+import re
+
+# 定义两个正则表达式
+regex_a = r'\d'
+regex_b = r'[a-zA-Z]'
+
+# 示例字符串
+string = "abc123"
+
+# 检查是否匹配两个正则表达式
+if re.search(regex_a, string) and re.search(regex_b, string):
+    # 如果同时匹配正则表达式 a 和 b
+    print("String matches both regex a and regex b")
+    # 这里执行匹配时的逻辑
+else:
+    # 如果不同时匹配正则表达式 a 和 b
+    print("String does not match both regex a和 regex b")
+    # 这里执行不匹配时的逻辑
