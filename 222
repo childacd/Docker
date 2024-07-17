@@ -63,3 +63,37 @@ else:
     # 如果不同时匹配正则表达式 a 和 b
     print("String does not match both regex a和 regex b")
     # 这里执行不匹配时的逻辑
+
+
+import pandas as pd
+
+# 定义Excel文件路径和分隔符
+excel_file = 'your_excel_file.xlsx'
+separator = '---SEPARATOR---'
+
+# 读取Excel文件中的所有工作表
+all_sheets = pd.read_excel(excel_file, sheet_name=None)
+
+# 初始化一个空列表来存储符合条件的DataFrame
+dfs = []
+
+# 遍历所有工作表
+for sheet_name, df in all_sheets.items():
+    # 检查工作表名称是否以'xxx'结尾
+    if sheet_name.endswith('xxx'):
+        # 在DataFrame前后添加分隔符
+        dfs.append(pd.DataFrame([[separator]], columns=[None]))
+        dfs.append(df)
+
+# 在最后一个DataFrame后再添加一个分隔符
+dfs.append(pd.DataFrame([[separator]], columns=[None]))
+
+# 将所有符合条件的DataFrame合并为一个DataFrame
+combined_df = pd.concat(dfs, ignore_index=True)
+
+# 导出到新的Excel文件
+combined_df.to_excel('combined_sheets.xlsx', index=False, header=False)
+
+print("Sheets combined and saved to combined_sheets.xlsx")
+
+
