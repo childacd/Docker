@@ -30,3 +30,36 @@ Execute Detach and Delete Volume Script
 |  
 V
 Completion
+
+#!/usr/bin/perl
+use strict;
+use warnings;
+
+# 输入文件路径
+my $input_file = '在这里填入你的输入文件路径';
+# 输出文件路径
+my $output_file = '在这里填入你的输出文件路径';
+
+# 正则替换规则
+my $pattern = qr/在这里填入你的正则表达式/;
+my $replacement = '在这里填入你的替换字符串';
+
+# 打开输入文件
+open(my $in_fh, '<', $input_file) or die "无法打开文件 '$input_file': $!";
+
+# 打开输出文件
+open(my $out_fh, '>', $output_file) or die "无法打开文件 '$output_file': $!";
+
+while (my $line = <$in_fh>) {
+    chomp $line;
+    my $result_line = $line =~ s/$pattern/$replacement/r;
+    print $out_fh "$result_line\n";
+}
+
+# 关闭文件句柄
+close($in_fh);
+close($out_fh);
+
+print "替换操作已完成，结果已保存到 '$output_file'\n";
+
+
