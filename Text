@@ -5,3 +5,8 @@ Our deployment functionality is located in deploy-artifact.yaml. For example, if
 As explained earlier, the -l parameter doesn’t actually affect anything here, because -l is used to limit the target group, and we’re using a host alias. The actual machine is determined by the machine field. So whether you use -l nfpe, -l nip, or -l with any other entity, it doesn’t make a difference.
 
 In the second step, if we want to deploy to this target, the command will simply involve changing these two values. Of course, we could also choose not to specify them, and if we don’t, the inventory defined in the file within the inventory folder will be used as the accurate source.
+
+
+But for loadGeo, the situation changes if we switch to a different group name. This is because loadGeo will locate the corresponding templates to generate Geo. So, if we specify a different target group, the templates it uses will also be different.
+
+However, in this case, no matter which legal entity we specify, the content of the artifact remains the same. Therefore, for deploy artifact, the group name following the -l option doesn’t actually affect the process. Which machine the deployment goes to is primarily determined by the value of machine.
