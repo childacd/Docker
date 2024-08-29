@@ -55,3 +55,20 @@ As you noticed, this value changed. The profile now includes not only the origin
 This part is quite detailed—the script is not a static script. It’s also dynamically generated when we load the JIL into Autosys. In our template folder, we have not only the JIL template but also the shell template in the j2 format. We’ve also extracted and separated the profile generation into a playbook. This means we can run just the deploy profile.yaml playbook to generate the shell file, allowing us to modify the values of the variables as needed.
 
 We’ve also added a top-level box. For example, for legal entities with full rewards, there are many batches, and in the new template, we’ve added a top-level box for each legal entity’s full reward. That about covers it. Now, let’s proceed with the demo.”
+
+
+Here's the translation:
+
+"Now, I'll do a demo to show you how we use Ansible to deploy artifacts, provision data, and unload the job. The provisioning playbook, which prepares the data, and the unloading job might take some time, so it might be a bit long if we wait here live. So, one or two hours before the session started, I ran it, and I can walk you through the logs. The output is still here, and I can go through it with you.
+
+First, I checked the inventory file for NFPE, as I wanted to run the NFPE batch. I checked whether the machine and the values were what I wanted, including the `all` folder's config, which applies to all inventory groups. I checked the `copdate`, other values, and the version to ensure it was the version I wanted to deploy.
+
+After reviewing these, I started the deploy artifact process. I set the tag as `deploy`, meaning I wanted to deploy three artifacts: config, simulator, and args. The deployment was successful.
+
+We have a playbook that checks the version on the machine after a successful deployment. Since I had already checked the NFPE file and knew the machine was set to `fvm18`, I didn't add `-e machine=fvm18` in the command line—I just ran it directly. Then I checked that the version on the machine was indeed the one I wanted.
+
+Next, I started provisioning, which involves copying the prepared data. As you can see from the task names, it was copying some data. After copying the data, I unloaded the JIL, which means I deleted the existing jobs.
+
+I printed the data, showing that it was in the BST timezone, meaning it was run one or two hours ago. After loading the JIL, I also executed the default batches, which involves `on-icing` some jobs. This is because, before running common batches, we `on-ice` the specified Geo jobs. Here, the `on-ice` jobs were `download` and `download later arrival`.
+
+Once these jobs were `on-iced`, we checked the Autosys system."
