@@ -29,3 +29,9 @@ Here's the translation:
 "These parts have actually already been completed, and they have been integrated with the latest changes from the August release. We have now ensured that the templates in our project are up to date. If anyone needs to use these later on, there's no need to redo or worry about this part. 
 
 After the SFT Ansible Adoption, what everyone will be using are the last two steps: rendering the stored templates in the project into JIL and then loading it into Autosys."
+
+
+Here's the translation:
+
+"In addition to the three main functions we mentioned earlier, we also have some auxiliary playbooks. For example, one is used to 'on ice' specified jobs, another is used to verify the installed versions after deploying artifacts, and another is for stopping specific jobs. We also have a reload job playbook, which is a combination of four playbooks. It basically includes everything from preparing the data to unloading the job, reloading the job, and then 'on icing' the specified job. Essentially, it's a standardized playbook that covers all the steps you would typically execute from start to finish."
+"Because we want to automate as many manual processes as possible."
