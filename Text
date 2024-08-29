@@ -20,7 +20,7 @@ We have three roles: GitLab, Jenkins, and our Developer. The Developer would go 
 
 Next, there’s a Dev server where the Developer SSHes into, then places the retrieved JIL onto the Dev server, and manually runs the JIL loading command to load the JIL into the system.
 
-So, how did we adopt Ansible into this process? We take the JIL generated using the original method—I'll use NIP as an example—and extract them into templates, placing them in `sft argus`. Then, we use Ansible to render the templates into JIL, and similarly, we use Ansible to load the JIL into Autosys."
+So, how did thewe adopt Ansible into this process? We take the JIL generated using the original method—I'll use NIP as an example—and extract them into templates, placing them in `sft argus`. Then, we use Ansible to render the templates into JIL, and similarly, we use Ansible to load the JIL into Autosys."
 
 
 
@@ -35,3 +35,23 @@ Here's the translation:
 
 "In addition to the three main functions we mentioned earlier, we also have some auxiliary playbooks. For example, one is used to 'on ice' specified jobs, another is used to verify the installed versions after deploying artifacts, and another is for stopping specific jobs. We also have a reload job playbook, which is a combination of four playbooks. It basically includes everything from preparing the data to unloading the job, reloading the job, and then 'on icing' the specified job. Essentially, it's a standardized playbook that covers all the steps you would typically execute from start to finish."
 "Because we want to automate as many manual processes as possible."
+
+
+
+Here’s the translation:
+
+“We’ve just discussed the three main functions, and we’ve also talked about how we extracted templates from the old JIL and used Ansible to render these templates into JIL as needed. There are actually some differences between the new JIL and the old JIL. Here, I’ve used a git diff to illustrate one of these differences. The original file shows the JIL that was generated before, and then I overwrote it with the newly generated JIL and used git diff to show the differences.
+
+You can see that one of the changes is that we no longer use Autosys global variables in places where they were used before, and there’s a change in the value of the profile. I’ll explain these changes in a bit more detail. For all the Ansible global variable values, we’ve replaced some of them with Ansible variables. This means that in the template, it’s a variable, and when it gets rendered into JIL, this value is replaced with an actual value.
+
+So, the version with the two curly braces is the template version, and when it gets rendered into an actual JIL, it gets replaced with a real value. The left side of the diagram shows the original version of the JIL, where in the final generated JIL, it was still an Autosys global variable, and some values were replaced with single-dollar-sign variables, which are actually shell variables.
+
+Now, you might wonder where these shell variables come from, and we’ll cover that in the next section. You might know that in our batch, there’s a setrunvar job. Our batch might include many jobs, like job1, job2, and so on. One of these jobs is the setrunvar job, which executes commands to set global variables, assigning key-value pairs. In the subsequent jobs—those that depend on the setrunvar job—these jobs will use the values set by that job.
+
+Since we’re no longer using Autosys global variables, how does this process work now? In our changes, we’ve modified the output of this job. We’ve set it to output the key-value pairs to a specific path, where they become part of an export key value script. Since you saw earlier that the profile of our Autosys job changed, this profile is essentially a file that gets sourced before the job’s command is executed. It can set environment variables.
+
+As you noticed, this value changed. The profile now includes not only the original shell script but also the script exported in the third step. This means that after the setrunvar job runs, these values are passed on to the subsequent jobs in the form of a profile. In these subsequent jobs, the reference method changes to use a single dollar sign to access the variable.
+
+This part is quite detailed—the script is not a static script. It’s also dynamically generated when we load the JIL into Autosys. In our template folder, we have not only the JIL template but also the shell template in the j2 format. We’ve also extracted and separated the profile generation into a playbook. This means we can run just the deploy profile.yaml playbook to generate the shell file, allowing us to modify the values of the variables as needed.
+
+We’ve also added a top-level box. For example, for legal entities with full rewards, there are many batches, and in the new template, we’ve added a top-level box for each legal entity’s full reward. That about covers it. Now, let’s proceed with the demo.”
