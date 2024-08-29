@@ -10,3 +10,14 @@ In the second step, if we want to deploy to this target, the command will simply
 But for loadGeo, the situation changes if we switch to a different group name. This is because loadGeo will locate the corresponding templates to generate Geo. So, if we specify a different target group, the templates it uses will also be different.
 
 However, in this case, no matter which legal entity we specify, the content of the artifact remains the same. Therefore, for deploy artifact, the group name following the -l option doesn’t actually affect the process. Which machine the deployment goes to is primarily determined by the value of machine.
+
+
+Here's the translation:
+
+"Next, I'll explain how we load JIL into Autosys. First, I'd like to briefly go over the approach we might have used before. Tom has likely already mentioned this earlier, so I'll quickly go through it.
+
+We have three roles: GitLab, Jenkins, and our Developer. The Developer would go to the Jenkins interface to trigger the Jenkins job. The Jenkins job would pull our project from GitLab, and within the Jenkins job, a Python script would run to generate the JIL. This JIL would then be in Jenkins' workspace. At this point, the Developer would retrieve the JIL from Jenkins' workspace. 
+
+Next, there’s a Dev server where the Developer SSHes into, then places the retrieved JIL onto the Dev server, and manually runs the JIL loading command to load the JIL into the system.
+
+So, how did we adopt Ansible into this process? We take the JIL generated using the original method—I'll use NIP as an example—and extract them into templates, placing them in `sft argus`. Then, we use Ansible to render the templates into JIL, and similarly, we use Ansible to load the JIL into Autosys."
