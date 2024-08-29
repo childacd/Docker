@@ -21,3 +21,11 @@ We have three roles: GitLab, Jenkins, and our Developer. The Developer would go 
 Next, there’s a Dev server where the Developer SSHes into, then places the retrieved JIL onto the Dev server, and manually runs the JIL loading command to load the JIL into the system.
 
 So, how did we adopt Ansible into this process? We take the JIL generated using the original method—I'll use NIP as an example—and extract them into templates, placing them in `sft argus`. Then, we use Ansible to render the templates into JIL, and similarly, we use Ansible to load the JIL into Autosys."
+
+
+
+Here's the translation:
+
+"These parts have actually already been completed, and they have been integrated with the latest changes from the August release. We have now ensured that the templates in our project are up to date. If anyone needs to use these later on, there's no need to redo or worry about this part. 
+
+After the SFT Ansible Adoption, what everyone will be using are the last two steps: rendering the stored templates in the project into JIL and then loading it into Autosys."
