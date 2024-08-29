@@ -1,0 +1,7 @@
+I will cover the deployment of artifacts and the part where we load geo into the autosave system, and then I’ll explain the differences between our new and old methods.
+
+Our deployment functionality is located in deploy-artifact.yaml. For example, if we want to deploy this version of sftconfig to fvm12, the command would involve passing these two parameters when invoking artifact.yaml, and setting the tag to config.
+
+As explained earlier, the -l parameter doesn’t actually affect anything here, because -l is used to limit the target group, and we’re using a host alias. The actual machine is determined by the machine field. So whether you use -l nfpe, -l nip, or -l with any other entity, it doesn’t make a difference.
+
+In the second step, if we want to deploy to this target, the command will simply involve changing these two values. Of course, we could also choose not to specify them, and if we don’t, the inventory defined in the file within the inventory folder will be used as the accurate source.
