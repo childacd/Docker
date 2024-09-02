@@ -1,0 +1,45 @@
+aws cloudtrail lookup-events \
+    --lookup-attributes AttributeKey=EventName,AttributeValue=RunInstances \
+    --start-time $(date -u -d '30 days ago' '+%Y-%m-%dT%H:%M:%SZ') \
+    --end-time $(date -u '+%Y-%m-%dT%H:%M:%SZ') \
+    --query 'Events[*].CloudTrailEvent' \
+    --output text | grep Spot
+
+aws ec2 describe-spot-instance-requests \
+    --filters "Name=state,Values=active,open,closed" \
+    --query 'SpotInstanceRequests[*].[SpotInstanceRequestId,InstanceId,CreateTime]' \
+    --output table
+
+aws ec2 describe-instances \
+    --filters "Name=instance-lifecycle,Values=spot" \
+    --query 'Reservations[*].Instances[*].[InstanceId,LaunchTime]' \
+    --output json | jq -r '.[][] | select(.LaunchTime >= "'$(date -u -d '30 days ago' '+%Y-%m-%dT%H:%M:%S')'Z") | .InstanceId'
+
+
+
+
+#!/bin/bash
+
+# 设置时间范围，默认为过去90天
+START_TIME=$(date -u -d '90 days ago' '+%Y-%m-%dT%H:%M:%SZ')
+
+# 第一步：获取所有 Spot Instances 的实例 ID 和启动时间
+aws ec2 describe-instances \
+    --filters "Name=instance-lifecycle,Values=spot" \
+    --query 'Reservations[*].Instances[*].[InstanceId,LaunchTime]' \
+    --output json > spot_instances.json
+
+# 第二步：过滤过去几个月内创建的 Spot Instances
+jq -r '.[][] | select(.LaunchTime >= "'$START_TIME'Z") | .InstanceId' spot_instances.json > spot_instance_ids.txt
+
+# 第三步：获取这些 Spot Instances 的标签信息
+echo "InstanceId | Key | Value" > spot_instance_tags.txt
+for id in $(cat spot_instance_ids.txt); do
+    aws ec2 describe-tags \
+        --filters "Name=resource-id,Values=$id" \
+        --query 'Tags[*].[ResourceId,Key,Value]' \
+        --output text >> spot_instance_tags.txt
+done
+
+# 输出完成信息
+echo "Spot Instances tags have been saved to spot_instance_tags.txt"
