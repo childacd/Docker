@@ -27,12 +27,28 @@ START_TIME=$(date -u -d '90 days ago' '+%Y-%m-%dT%H:%M:%SZ')
 aws ec2 describe-instances \
     --filters "Name=instance-lifecycle,Values=spot" \
     --query 'Reservations[*].Instances[*].[InstanceId,LaunchTime]' \
-    --output json > spot_instances.json
+    --output json > 
 
-# 第二步：过滤过去几个月内创建的 Spot Instances
-jq -r '.[][] | select(.LaunchTime >= "'$START_TIME'Z") | .InstanceId' spot_instances.json > spot_instance_ids.txt
 
-# 第三步：获取这些 Spot Instances 的标签信息
+
+
+
+
+
+#!/bin/bash
+
+# 设置时间范围，默认为过去90天
+START_TIME=$(date -u -d '90 days ago' '+%Y-%m-%dT%H:%M:%SZ')
+
+# 第一步：获取过去几个月内的 Spot Instance Requests
+aws ec2 describe-spot-instance-requests \
+    --query 'SpotInstanceRequests[?CreateTime>=`'"$START_TIME"'`]' \
+    --output json > spot_requests.json
+
+# 第二步：提取对应的实例 ID
+jq -r '.[] | select(.InstanceId != null) | .InstanceId' spot_requests.json > spot_instance_ids.txt
+
+# 第三步：获取这些实例的标签信息
 echo "InstanceId | Key | Value" > spot_instance_tags.txt
 for id in $(cat spot_instance_ids.txt); do
     aws ec2 describe-tags \
