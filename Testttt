@@ -1,0 +1,11 @@
+aws s3api put-bucket-encryption \
+  --bucket <your-bucket-name> \
+  --server-side-encryption-configuration '{
+      "Rules": [{
+          "ApplyServerSideEncryptionByDefault": {
+              "SSEAlgorithm": "aws:kms",
+              "KMSMasterKeyID": "<your-kms-key-id>"
+          },
+          "BucketKeyEnabled": true
+      }]
+  }'
