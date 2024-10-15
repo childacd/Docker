@@ -1,0 +1,49 @@
+---
+- name: Check DNS and terminate old Jumpbox if necessary
+  hosts: localhost
+  gather_facts: no
+  vars:
+    dns_record: "example.yourdomain.com"  # 你的DNS记录
+    tag_value: "your_tag_value"           # EC2 tag值
+    region: "us-west-2"                   # AWS Region
+  tasks:
+    - name: Query for existing EC2 instances with the same tag
+      shell: |
+        aws ec2 describe-instances \
+          --filters "Name=tag:Name,Values={{ tag_value }}" \
+          --region {{ region }} \
+          --query 'Reservations[*].Instances[*].{InstanceId:InstanceId,PrivateIpAddress:PrivateIpAddress,State:State.Name}' \
+          --output json
+      register: ec2_instances
+      changed_when: false
+
+    - name: Parse the running instances
+      set_fact:
+        existing_instances: "{{ ec2_instances.stdout | from_json | selectattr('State', 'equalto', 'running') | list }}"
+    
+    - name: Debug the list of existing instances (optional)
+      debug:
+        msg: "{{ existing_instances }}"
+
+    - name: Resolve the current DNS record to IP address
+      shell: nslookup {{ dns_record }} | grep 'Address' | tail -n1 | awk '{print $2}'
+      register: dns_ip
+      changed_when: false
+
+    - name: Check if DNS is pointing to the new instance
+      set_fact:
+        dns_matches_new_instance: "{{ dns_ip.stdout in existing_instances | map(attribute='PrivateIpAddress') | list }}"
+    
+    - name: Debug DNS result (optional)
+      debug:
+        msg: "DNS matches new Jumpbox instance: {{ dns_matches_new_instance }}"
+
+    - name: Terminate this Jumpbox if DNS has updated
+      shell: |
+        aws ec2 terminate-instances --instance-ids {{ ansible_host }} --region {{ region }}
+      when: dns_matches_new_instance | bool
+      register: termination_result
+
+    - name: Debug termination result (optional)
+      debug:
+        msg: "{{ termination_result }}"
