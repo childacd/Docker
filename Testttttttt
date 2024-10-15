@@ -1,0 +1,25 @@
+---
+- name: Create an EC2 instance and retrieve Instance ID using Python
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Run AWS CLI to create an EC2 instance
+      shell: |
+        aws ec2 run-instances \
+          --image-id {{ ami }} \
+          --count 1 \
+          --instance-type {{ instance_type }} \
+          --subnet-id {{ subnet_id }} \
+          --security-group-ids {{ security_group }} \
+          --region {{ region }} \
+          --block-device-mappings '[{"DeviceName":"/dev/sda1","Ebs":{"VolumeSize":20,"VolumeType":"gp2"}}]'
+      register: ec2_run_output
+      changed_when: false
+
+    - name: Parse Instance ID using Ansible's json_query
+      set_fact:
+        created_instance_id: "{{ ec2_run_output.stdout | from_json | json_query('Instances[0].InstanceId') }}"
+
+    - name: Debug the Instance ID
+      debug:
+        msg: "Created EC2 Instance ID is {{ created_instance_id }}"
