@@ -1,0 +1,78 @@
+可以通过以下步骤创建一个 Docker 容器来模拟写日志并实时监控其占用的磁盘大小。目标是创建一个日志生成器容器，它会快速写入日志文件，然后我们可以使用 Docker 命令或监控工具来观察它的磁盘使用。
+
+步骤 1: 创建一个会快速生成日志的 Docker 镜像
+
+我们可以通过一个简单的 Dockerfile 来实现：
+
+Dockerfile
+
+# Dockerfile
+FROM alpine:latest
+
+# Install bash
+RUN apk add --no-cache bash
+
+# Create a script that writes logs continuously
+RUN echo '#!/bin/bash\nwhile true; do echo "$(date) - This is a log entry with a lot of data to fill up the disk quickly" >> /var/log/app.log; sleep 0.01; done' > /log_writer.sh && chmod +x /log_writer.sh
+
+# Set the entrypoint to the script
+ENTRYPOINT ["/bin/bash", "/log_writer.sh"]
+
+这里我们使用 Alpine 镜像，并编写了一个简单的 Bash 脚本，每 0.01 秒就往日志文件中写入一行。
+
+构建 Docker 镜像
+
+docker build -t log-generator .
+
+步骤 2: 运行 Docker 容器并生成日志
+
+我们通过以下命令来启动容器：
+
+docker run -d --name log-generator log-generator
+
+这会在后台启动一个名为 log-generator 的容器，它会持续写入日志。
+
+步骤 3: 监控 Docker 容器的磁盘使用
+
+选项 1: 使用 docker system df
+
+watch -n 1 docker system df
+
+这会每秒更新一次 Docker 使用的磁盘空间信息，你可以观察容器、镜像、卷的大小变化。
+
+选项 2: 直接查看容器的日志大小
+
+docker inspect --format='{{.LogPath}}' log-generator
+
+这会输出容器日志文件的路径。然后你可以使用 watch 命令来查看该日志文件的大小：
+
+watch -n 1 du -sh /var/lib/docker/containers/<container-id>/<container-id>-json.log
+
+选项 3: 进入容器查看文件大小
+
+你可以直接进入容器，实时查看生成的日志文件：
+
+docker exec -it log-generator /bin/sh
+watch -n 1 ls -lh /var/log/app.log
+
+步骤 4: 加速日志生成
+
+如果你希望日志生成得更快，可以调整 Bash 脚本中的 sleep 时间，甚至可以移除 sleep 语句来加快日志生成的速度：
+
+RUN echo '#!/bin/bash\nwhile true; do echo "$(date) - This is a massive log entry to fill up the disk quickly" >> /var/log/app.log; done' > /log_writer.sh && chmod +x /log_writer.sh
+
+实时监控工具的选择
+
+1. docker stats 命令
+
+docker stats 命令可以实时显示容器的 CPU、内存、网络 I/O 和磁盘 I/O 的统计信息。你可以使用它来观察容器的资源消耗：
+
+docker stats log-generator
+
+2. Grafana + Prometheus
+
+如果你有使用 Grafana 和 Prometheus 的经验，可以将 Docker 容器的指标（如磁盘使用量、CPU 和内存使用量等）导入 Prometheus，并通过 Grafana 仪表盘来可视化这些数据。
+
+总结
+
+通过这个设置，我们创建了一个日志生成容器，并能够通过多种方式监控它的实时磁盘使用情况。通过加快日志写入速度，可以在短时间内填满指定的磁盘空间，从而模拟实际生产环境中日志文件过大或磁盘空间不足的场景。
