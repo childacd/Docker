@@ -1,0 +1,28 @@
+#!/bin/bash
+# This script runs as the root user on an AWS EC2 instance
+
+# Update the package list
+apt-get update -y
+
+# Install Docker if not already installed
+if ! command -v docker &> /dev/null
+then
+    apt-get install -y docker.io
+fi
+
+# Create a systemd override file to set Docker restart policy
+mkdir -p /etc/systemd/system/docker.service.d/
+cat <<EOF > /etc/systemd/system/docker.service.d/override.conf
+[Service]
+Restart=on-failure
+RestartSec=10s
+EOF
+
+# Reload systemd to apply changes
+systemctl daemon-reload
+
+# Restart Docker to apply new configuration
+systemctl restart docker
+
+# Enable Docker to start on boot
+systemctl enable docker
