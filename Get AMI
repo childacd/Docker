@@ -1,0 +1,128 @@
+pipeline {
+    agent any
+    parameters {
+        // 动态获取 AMI 列表并设置为 Jenkins 参数
+        choice(name: 'SELECTED_AMI', choices: getAmiList(), description: 'Choose an AMI from the list')
+    }
+    stages {
+        stage('Deploy with Selected AMI') {
+            steps {
+                script {
+                    echo "Using AMI: ${params.SELECTED_AMI} for deployment"
+                    // 在此处继续后续的部署操作
+                    ansiblePlaybook(
+                        playbook: 'deploy.yml',
+                        inventory: 'inventory_file',
+                        extras: "-e ami_id=${params.SELECTED_AMI}"
+                    )
+                }
+            }
+        }
+    }
+}
+
+// Helper function to run Ansible and fetch AMI list
+def getAmiList() {
+    // 运行 Ansible Playbook 获取 AMI 列表
+    def playbookResult = sh(
+        script: "ansible-playbook get_ami.yml -i localhost,",
+        returnStdout: true
+    ).trim()
+
+    // 解析 Playbook 输出，生成 AMI 列表
+    def amiList = playbookResult.split("\n").collect { it.trim() }
+    echo "Available AMIs: ${amiList}"
+    
+    return amiList.join("\n")
+}
+
+
+---
+- name: Get list of available AWS AMIs
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Retrieve list of AMIs in a specific region
+      command: >
+        aws ec2 describe-images
+        --region us-west-2
+        --owners "self"  # 根据需要可调整为 "amazon" 或特定 AMI 拥有者 ID
+        --filters "Name=state,Values=available" "Name=image-type,Values=machine"
+        --query "Images[*].ImageId"
+        --output text
+      register: ami_list_output
+
+    - name: Output the AMI list in a format suitable for Jenkins
+      debug:
+        msg: "{{ ami_list_output.stdout_lines }}"
+
+
+pipeline {
+    agent any
+    environment {
+        AMI_LIST = '' // 用于存储获取到的 AMI 列表
+    }
+    stages {
+        stage('Get AWS AMIs') {
+            steps {
+                script {
+                    // 使用 Jenkins Ansible 插件执行 Playbook 获取 AMI 列表
+                    def playbookResult = ansiblePlaybook(
+                        playbook: 'get_ami.yml',
+                        inventory: 'inventory_file', // 如果需要指定 inventory 文件
+                        extras: '-e some_variable=value', // 传递额外的变量
+                        returnStdout: true // 获取 Playbook 的输出结果
+                    ).trim()
+                    
+                    // 假设 playbookResult 是 AMI 列表，每个 AMI 以换行符分隔
+                    // 你可以根据实际输出格式调整解析逻辑
+                    def amiList = playbookResult.split("\n")
+                    echo "Available AMIs: ${amiList}"
+                    
+                    // 将 AMI 列表转为一个用换行符分隔的字符串格式，用于 input 步骤
+                    env.AMI_LIST = amiList.join("\n")
+                }
+            }
+        }
+
+        stage('User Select AMI') {
+            steps {
+                script {
+                    try {
+                        // 等待用户选择 AMI，超时后使用默认的第一个 AMI
+                        def selectedAMI = input(
+                            id: 'userAMIChoice',
+                            message: 'Please choose an AMI:',
+                            parameters: [
+                                choice(name: 'AMI', choices: env.AMI_LIST, description: 'Choose an AMI from the list')
+                            ],
+                            timeout: 30 // 等待时间，单位为分钟
+                        )
+                        echo "User selected AMI: ${selectedAMI}"
+                        env.SELECTED_AMI = selectedAMI
+                    } catch (err) {
+                        // 超时后选择默认 AMI（比如第一个 AMI）
+                        def defaultAMI = env.AMI_LIST.split("\n")[0]
+                        echo "No selection made, proceeding with default AMI: ${defaultAMI}"
+                        env.SELECTED_AMI = defaultAMI
+                    }
+                }
+            }
+        }
+
+        stage('Deploy with Selected AMI') {
+            steps {
+                script {
+                    echo "Using AMI: ${env.SELECTED_AMI} for deployment"
+                    // 可以在这里用选定的 AMI 执行后续步骤，比如调用其他 Ansible Playbook
+                    ansiblePlaybook(
+                        playbook: 'deploy.yml',
+                        inventory: 'inventory_file',
+                        extras: "-e ami_id=${env.SELECTED_AMI}"
+                    )
+                }
+            }
+        }
+    }
+}
+
