@@ -1,0 +1,29 @@
+def getAmiList() {
+    withCredentials([usernamePassword(credentialsId: "deployment_user_dev", passwordVariable: 'pass', usernameVariable: 'user')]) {
+        ansiblePlaybook(
+            colorized: true,
+            installation: 'Ansible 2',
+            playbook: "${WORKSPACE}/ansible_scripts/playbooks/get_ami.yml",
+            inventory: "${WORKSPACE}/ansible_scripts/playbooks/hosts_nonprod",
+            disableHostKeyChecking: true,
+            extraVars: [
+                ansible_user: "${user}",
+                ansible_password: "${pass}"
+            ],
+            returnStdout: true
+        )
+    }
+
+    // 读取output.txt文件内容，并处理每行数据
+    def playbookResult = readFile("${WORKSPACE}/ansible_scripts/playbooks/output.txt").trim()
+    def amiList = playbookResult.split("\n").collect { line ->
+        def parts = line.split(" ", 2)  // 尝试分割成AMI ID和名称两部分
+        if (parts.size() > 1) {
+            return "${parts[0]} - ${parts[1]}"  // 格式化为"AMI ID - AMI Name"
+        } else {
+            return parts[0]  // 仅返回AMI ID
+        }
+    }
+
+    return amiList  // 返回AMI ID和名称的列表
+}
