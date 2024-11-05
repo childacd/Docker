@@ -1,0 +1,74 @@
+pipeline {
+    agent any
+
+    environment {
+        AMI_LIST_FILE = "${WORKSPACE}/ansible_scripts/playbooks/output.txt"
+        DEFAULT_AMI = "ami-12345678" // 设置默认的 AMI ID，若超时未选择则使用此默认值
+    }
+
+    stages {
+        stage('Retrieve AMI List') {
+            steps {
+                script {
+                    // 执行 Ansible Playbook 获取最新的 AMI 列表
+                    withCredentials([usernamePassword(credentialsId: "deployment_user_dev", passwordVariable: 'pass', usernameVariable: 'user')]) {
+                        ansiblePlaybook(
+                            colorized: true,
+                            installation: 'Ansible 2',
+                            playbook: "${WORKSPACE}/ansible_scripts/playbooks/get_ami.yml",
+                            inventory: "${WORKSPACE}/ansible_scripts/playbooks/hosts_nonprod",
+                            disableHostKeyChecking: true,
+                            extraVars: [
+                                ansible_user: "${user}",
+                                ansible_password: "${pass}"
+                            ],
+                            returnStdout: true
+                        )
+                    }
+
+                    // 读取 AMI 列表文件
+                    def amiListContent = readFile(AMI_LIST_FILE).trim()
+                    def amiList = amiListContent.split("\n").collect { line ->
+                        def parts = line.split(" ", 2)
+                        return parts.size() > 1 ? "${parts[0]} - ${parts[1]}" : parts[0]
+                    }
+
+                    // 将 amiList 转化为用于 input 的选项列表
+                    def choices = amiList.join('\n')
+                    echo "Available AMI choices:\n${choices}"
+                }
+            }
+        }
+
+        stage('Select AMI') {
+            steps {
+                script {
+                    try {
+                        // 设置超时时间为 10 秒，等待用户输入
+                        timeout(time: 10, unit: 'SECONDS') {
+                            // 在控制台显示选项供用户选择
+                            def userChoice = input(
+                                message: 'Choose an AMI from the list:',
+                                parameters: [choice(name: 'SELECTED_AMI', choices: choices, description: 'Choose an AMI')]
+                            )
+
+                            // 设置选择的 AMI 到环境变量
+                            env.SELECTED_AMI = userChoice
+                        }
+                    } catch (err) {
+                        // 超时则使用默认的 AMI
+                        echo "User did not select an AMI within the time limit. Using default AMI: ${DEFAULT_AMI}"
+                        env.SELECTED_AMI = DEFAULT_AMI
+                    }
+                }
+            }
+        }
+
+        stage('Deploy with Selected AMI') {
+            steps {
+                echo "Deploying with AMI: ${env.SELECTED_AMI}"
+                // 在这里执行部署操作，使用选定的 AMI
+            }
+        }
+    }
+}
