@@ -1,0 +1,19 @@
+- hosts: ansible_control_node
+  gather_facts: no
+  tasks:
+    - name: Retrieve list of latest 6 AMIs in a specific region
+      command: >
+        aws ec2 describe-images
+        --region eu-west-1
+        --filters "Name=architecture,Values=x86_64" "Name=creation-date,Values=2024-10*"
+        --query "Images | sort_by(@, &CreationDate) | reverse(@)[:6].[ImageId, Name]"
+        --output text
+      register: ami_list_output
+
+    - debug: var=ami_list_output
+
+    - name: save to localhost
+      copy:
+        content: "{{ ami_list_output.stdout }}"
+        dest: "{{ playbook_dir }}/output.txt"
+      delegate_to: localhost
