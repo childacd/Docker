@@ -1,0 +1,5 @@
+separator(
+    name: "ami_upgrade_backup_stop_dremio",
+    sectionHeader: "AMI Upgrade - Backup and stop Dremio:",
+    separatorStyle: "background-color: #b3cde0; color: #343434; padding: 6px 12px; border-radius: 4px; font-size: 18px; display: inline-block; font-weight: bold; text-align: left;"
+)
