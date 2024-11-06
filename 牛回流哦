@@ -1,0 +1,1 @@
+separator(name: "common_parameters", sectionHeader: "AMI Upgrade:", separatorStyle: "background-color: #b3cde0; width: 40%; height: 1.5em; padding: 2px; font-size: 18px; border-width: 0;", sectionHeaderStyle: "color: #343434; font-size: 18px; text-align: left; font-weight: normal;")
