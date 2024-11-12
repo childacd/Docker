@@ -1,0 +1,14 @@
+resource "aws_instance" "example" {
+  ami           = "ami-123456"
+  instance_type = "t2.micro"
+
+  user_data = <<-EOF
+    #cloud-config
+    write_files:
+      - path: "/home/ec2-user/my_file.txt"
+        permissions: "0644"
+        owner: "ec2-user:ec2-user"
+        encoding: "b64"
+        content: "${filebase64("${path.module}/my_file.txt")}"
+  EOF
+}
