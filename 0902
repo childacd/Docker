@@ -30,7 +30,58 @@ aws ec2 describe-instances \
     --output json > 
 
 
+use strict;
+use warnings;
+use File::Slurp; # 用于读取和写入文件
 
+# 预定义的 map
+my %tag_map = (
+    "valueA1" => { "valueB1" => "valueC1" },
+    "valueA2" => { "valueB2" => "valueC2" },
+    # 添加更多键值对组合
+);
+
+# 读取 Terraform 文件
+my $file_path = 'example.tf';
+my $terraform_config = read_file($file_path);
+
+# 处理 Terraform 配置，提取 `aws_instance` 资源块
+$terraform_config =~ s{
+    (resource\s+"aws_instance"\s+"(\w+)"\s*\{(.*?tags\s*=\s*\{.*?\})\})
+}{
+    my $instance_block = $1;  # 整个实例块
+    my $instance_name  = $2;  # 实例名称
+    my $tags_block     = $3;  # tags 块内容
+
+    # 提取 A 和 B 标签的值
+    my ($tag_a_value) = $tags_block =~ /A\s*=\s*"([^"]+)"/;
+    my ($tag_b_value) = $tags_block =~ /B\s*=\s*"([^"]+)"/;
+
+    # 确定 C 标签的值
+    my $tag_c_value;
+    if (defined $tag_map{$tag_a_value} && defined $tag_map{$tag_a_value}{$tag_b_value}) {
+        $tag_c_value = $tag_map{$tag_a_value}{$tag_b_value};
+    } else {
+        warn "未找到匹配的 C 值: A = $tag_a_value, B = $tag_b_value\n";
+        $tag_c_value = 'default_value'; # 如果找不到对应的值，可以使用一个默认值
+    }
+
+    # 添加 C 标签到 tags 块
+    if ($tags_block =~ /C\s*=\s*"[^"]*"/) {
+        # 如果已有 C 标签，则替换其值
+        $tags_block =~ s/C\s*=\s*"[^"]*"/C = "$tag_c_value"/;
+    } else {
+        # 如果没有 C 标签，则添加新行
+        $tags_block =~ s/\}/    C = "$tag_c_value"\n    }/;
+    }
+
+    # 返回修改后的实例块
+    $instance_block =~ s{tags\s*=\s*\{.*?\}}{$tags_block};
+    $instance_block;
+}egsx;
+
+# 将修改后的内容写回 Terraform 文件
+write_file($file_path, $terraform_config);
 
 
 
