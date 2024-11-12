@@ -1,0 +1,42 @@
+# 定义嵌套的 map
+variable "tag_map" {
+  type = map(map(string))
+  default = {
+    "valueA1" = {
+      "valueB1" = "valueC1",
+      "valueB2" = "valueC2"
+    },
+    "valueA2" = {
+      "valueB1" = "valueC3",
+      "valueB2" = "valueC4"
+    }
+  }
+}
+
+# 定义 A 和 B 标签的值（你可以直接使用值或通过变量传入）
+variable "tag_a_value" {
+  type    = string
+  default = "valueA1" # 假设 A 标签的值
+}
+
+variable "tag_b_value" {
+  type    = string
+  default = "valueB1" # 假设 B 标签的值
+}
+
+# 使用 lookup 从嵌套 map 中获取 C 标签的值
+locals {
+  tag_c_value = lookup(lookup(var.tag_map, var.tag_a_value, {}), var.tag_b_value, "default_value_if_not_found")
+}
+
+# 声明 EC2 实例并设置标签
+resource "aws_instance" "example" {
+  ami           = "ami-xxxxxx"
+  instance_type = "t2.micro"
+
+  tags = {
+    A = var.tag_a_value
+    B = var.tag_b_value
+    C = local.tag_c_value
+  }
+}
