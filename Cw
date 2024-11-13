@@ -1,0 +1,44 @@
+---
+- name: Generate UserData for EC2 instance
+  hosts: localhost
+  tasks:
+    - name: Load CloudWatch Agent configuration
+      ansible.builtin.slurp:
+        src: "/path/to/your-cloudwatch-config.json"  # 项目内部 CloudWatch 配置文件的路径
+      register: cloudwatch_config
+
+    - name: Render UserData template
+      ansible.builtin.template:
+        src: "/path/to/user_data_template.j2"
+        dest: "/path/to/rendered/user_data.sh"
+        mode: '0755'
+        vars:
+          cloudwatch_config_content: "{{ cloudwatch_config.content | b64decode }}"
+
+……
+#!/bin/bash
+
+# 其他初始化代码可以放在这里
+
+# 写入 CloudWatch Agent 配置文件
+cat <<EOF > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+{{ cloudwatch_config_content }}
+EOF
+
+# 停止 CloudWatch Agent
+sudo systemctl stop amazon-cloudwatch-agent
+
+# 应用新配置并重新启动 CloudWatch Agent
+sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+echo "CloudWatch Agent reloaded with new configuration."
+
+……
+resource "aws_instance" "example" {
+  ami           = "ami-12345678"
+  instance_type = "t2.micro"
+
+  # 将 Ansible 生成的 UserData 脚本传递给 user_data
+  user_data = file("/path/to/rendered/user_data.sh")
+
+  # 其他资源配置
+}
