@@ -1,0 +1,10 @@
+#### 步骤 2：创建 `drop-in` 配置文件
+
+在 `UserData` 中添加 `systemd` 的 `drop-in` 文件配置，路径通常为 `/etc/systemd/system/amazon-cloudwatch-agent.service.d/override.conf`：
+
+```bash
+mkdir -p /etc/systemd/system/amazon-cloudwatch-agent.service.d/
+cat << 'EOF' > /etc/systemd/system/amazon-cloudwatch-agent.service.d/override.conf
+[Service]
+ExecStartPre=/opt/cloudwatch_agent_setup.sh
+EOF
