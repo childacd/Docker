@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# Create a CloudWatch Agent control script dynamically
+cat << 'EOF' > /tmp/cloudwatch_agent_control.sh
+#!/bin/bash
+
+# Stop, fetch configuration, and start the CloudWatch Agent, logging output
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a stop >> /var/log/cloudwatch_agent.log 2>&1
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/path/to/your-config.json >> /var/log/cloudwatch_agent.log 2>&1
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a start >> /var/log/cloudwatch_agent.log 2>&1
+EOF
+
+# Make the script executable
+chmod +x /tmp/cloudwatch_agent_control.sh
+
+# Run the script in the background, redirecting output to a specific log
+nohup /tmp/cloudwatch_agent_control.sh > /var/log/cloudwatch_agent_background.log 2>&1 &
+
+echo "CloudWatch Agent control script started in the background."
