@@ -1,0 +1,33 @@
+import configparser
+
+# 讀取配置文件
+config = configparser.ConfigParser()
+config.read('config.ini')
+
+# 獲取參數
+param1 = config['DEFAULT']['param1']
+param2 = config['DEFAULT']['param2']
+param3 = config['DEFAULT']['param3']
+
+print(f"Param1: {param1}, Param2: {param2}, Param3: {param3}")
+input("Press Enter to exit...")
+
+
+# ----------
+import os
+
+config_path = os.path.join(os.getcwd(), 'config.ini')  # 當前目錄查找
+if not os.path.exists(config_path):
+    config_path = '/path/to/backup/config.ini'  # 備用路徑
+
+config.read(config_path)
+
+
+[DEFAULT]
+param1 = value1
+param2 = value2
+param3 = value3
+
+
+
+pyinstaller --onefile --debug my_program.py
