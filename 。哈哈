@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# 输入参数
+read -p "Enter the base directory to search: " base_dir
+read -p "Enter the target string to search for: " target_string
+read -p "Enter the replacement string: " replacement_string
+
+# 查找所有 .j2 文件并筛选包含目标字符串的文件
+matched_files=$(grep -rl --include="*.j2" "$target_string" "$base_dir")
+
+# 替换操作
+for file in $matched_files; do
+  if [[ -f $file ]]; then
+    # 使用 sed 替换并保存
+    sed -i "s/${target_string}/${replacement_string}/g" "$file"
+    echo "Updated: $file"
+  fi
+done
+
+echo "All matching files processed."
