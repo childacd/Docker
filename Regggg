@@ -1,0 +1,1 @@
+grep -rEo 'hello\s*:\s*["'\'']?(.*?)["'\'']?\b' /path/to/project | sed -E 's/hello\s*:\s*["'\'']?(.*?)["'\'']?/\1/' | sort -u
