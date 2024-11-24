@@ -1,0 +1,30 @@
+import configparser
+
+# 读取配置文件
+config = configparser.ConfigParser()
+config.read('config.ini')
+
+# 获取配置文件中的路径
+paths = [
+    config['DEFAULT']['acct_seg_file'],
+    config['DEFAULT']['uls_excel_file'],
+    config['DEFAULT']['BT_file']
+]
+
+# 批量检查路径
+for path in paths:
+    check_path(path)
+
+
+
+import os
+
+def check_path(file_path):
+    """
+    检查路径是否存在，如果不存在则抛出 FileNotFoundError。
+    :param file_path: 文件路径
+    """
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Path not found: {file_path}")
+    print(f"Path is valid: {file_path}")
+    return file_path
