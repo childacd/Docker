@@ -1,0 +1,43 @@
+def read_excel_with_estimation(filepath, sheet_name=0, usecols=None, nrows=None, **kwargs):
+    import pandas as pd
+    import time
+
+    # 打开 Excel 文件以获取元数据信息
+    excel_file = pd.ExcelFile(filepath)
+    total_rows = None
+    total_cols = None
+
+    # 获取总行数和列数（如果可用）
+    try:
+        total_rows, total_cols = excel_file.book[sheet_name].max_row, excel_file.book[sheet_name].max_column
+    except Exception:
+        print("无法确定总行数或列数，可能是读取错误。")
+
+    # 打印基本信息
+    print(f"即将读取文件: {filepath}")
+    print(f"包含的工作表: {excel_file.sheet_names}")
+    if sheet_name is None:
+        print(f"未指定工作表，将默认读取第一个: {excel_file.sheet_names[0]}")
+        sheet_name = excel_file.sheet_names[0]
+    else:
+        print(f"将读取工作表: {sheet_name}")
+
+    # 如果无法获取行数和列数，则输出未知信息
+    total_rows_msg = str(total_rows) if total_rows is not None else "未知"
+    total_cols_msg = str(total_cols) if total_cols is not None else "未知"
+    print(f"工作表 {sheet_name} 总行数: {total_rows_msg}, 总列数: {total_cols_msg}")
+
+    # 计算将读取的行数和列数
+    estimated_rows = total_rows if nrows is None else min(nrows, total_rows or nrows)
+    estimated_cols = len(usecols) if usecols else (total_cols if total_cols is not None else "未知")
+    print(f"将读取的部分: {estimated_rows} 行 × {estimated_cols} 列")
+
+    # 开始计时并读取数据
+    start_time = time.time()
+    df = pd.read_excel(filepath, sheet_name=sheet_name, usecols=usecols, nrows=nrows, **kwargs)
+    end_time = time.time()
+
+    # 打印读取结果和用时
+    print(f"实际读取时间: {end_time - start_time:.2f} 秒")
+    print(f"成功读取数据: {df.shape[0]} 行, {df.shape[1]} 列")
+    return df
