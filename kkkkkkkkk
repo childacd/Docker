@@ -1,0 +1,31 @@
+import os
+import configparser
+import pandas as pd
+
+# 读取配置文件
+config = configparser.ConfigParser()
+config.read('config.ini')
+
+# 直接从配置文件获取路径
+acct_seg_file = config['DEFAULT']['acct_seg_file']
+
+# 打印路径用于调试
+print(f"File path: {acct_seg_file}")
+
+# 检查路径是否存在
+if not os.path.exists(acct_seg_file):
+    raise FileNotFoundError(f"File not found: {acct_seg_file}")
+else:
+    print(f"Valid file path: {acct_seg_file}")
+
+# 读取 Excel 文件
+portable = pd.read_excel(
+    acct_seg_file,
+    sheet_name="NC List",   # 指定工作表
+    usecols=[17, 18],       # 指定列
+    header=1,               # 表头行（从 0 开始计数）
+    nrows=18                # 读取的行数
+)
+
+# 打印内容用于调试
+print(portable)
