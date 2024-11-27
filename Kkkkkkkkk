@@ -1,0 +1,81 @@
+这个问题是由于 Excel的日期系统存在的一个已知bug：Excel错误地将1900年视为闰年，因此支持了一个虚假的日期——1900年2月29日，而实际上1900年并不是闰年，2月只有28天。Pandas的pd.to_datetime严格遵循公历标准，因此会忽略这个虚假的2月29日，从而导致日期不匹配的问题。
+
+以下是解决这个问题的几种方法：
+
+方法 1：调整Excel日期序列的基准
+
+在读取Excel中的日期数据后，将日期大于或等于1900年3月1日的值减去一天，这样可以修正由Excel虚假闰年导致的偏移。
+
+import pandas as pd
+
+# 读取Excel文件
+df = pd.read_excel("your_file.xlsx")
+
+# 将数字转为日期，并修正虚假闰年问题
+def excel_date_fix(serial_date):
+    if serial_date >= 61:  # Excel的日期序列从1开始，1900年2月29是第60天
+        serial_date -= 1
+    return pd.to_datetime("1899-12-30") + pd.to_timedelta(serial_date, unit='D')
+
+# 假设日期存储在列名为 "date" 中
+df['date_fixed'] = df['date'].apply(excel_date_fix)
+
+	注意: 1899-12-30 是Excel中日期序列的起点。
+
+方法 2：在读取时直接调整
+
+如果你使用的是 openpyxl 或其他更底层的读取工具，也可以在读取阶段修正日期偏移。
+
+import pandas as pd
+from openpyxl import load_workbook
+
+# 打开Excel文件
+wb = load_workbook("your_file.xlsx", data_only=True)
+sheet = wb.active
+
+# 读取日期数据并修正
+data = []
+for row in sheet.iter_rows(values_only=True):
+    row_data = []
+    for cell in row:
+        if isinstance(cell, (int, float)):  # 如果是数字型日期
+            if cell >= 61:
+                cell -= 1
+            cell = pd.to_datetime("1899-12-30") + pd.to_timedelta(cell, unit='D')
+        row_data.append(cell)
+    data.append(row_data)
+
+# 转为DataFrame
+df = pd.DataFrame(data, columns=["column1", "column2", ...])  # 自定义列名
+
+方法 3：仅调整1900年及以前的日期
+
+如果你的日期数据主要集中在现代日期（1900年之后），而且少数涉及到1900年问题，你可以专门针对1900年前的日期进行修正。
+
+def fix_1900_dates(date_serial):
+    if 1 <= date_serial < 61:  # 1900年1月1日到1900年2月28日
+        return pd.to_datetime("1899-12-30") + pd.to_timedelta(date_serial, unit='D')
+    elif date_serial >= 61:  # 1900年3月1日之后
+        return pd.to_datetime("1899-12-30") + pd.to_timedelta(date_serial - 1, unit='D')
+    else:
+        return None
+
+df['date_fixed'] = df['date'].apply(fix_1900_dates)
+
+方法 4：Excel 中修复日期
+
+如果希望直接在Excel中解决，可以通过以下公式修正数字日期：
+
+=IF(A1>=61, A1-1, A1)
+
+然后将结果另存为新的Excel文件，Pandas读取时就不会有偏差。
+
+总结
+
+推荐使用方法 1 或 2，根据需要调整所有序列化日期的基准。修正逻辑是：
+
+	1.	1900年3月1日及之后的日期需减去一天。
+	2.	1900年1月1日至2月28日不变。
+	3.	Pandas的pd.to_datetime不会解析无效的1900年2月29日。
+
+如果你的日期数据分布复杂，可以尝试结合条件逻辑确保准确性。
