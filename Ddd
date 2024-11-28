@@ -1,0 +1,1 @@
+sed -n "s/getArtifactVersions('\([^']*\)'.*)/\1/p" Jenkins*
