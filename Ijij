@@ -1,0 +1,89 @@
+// 定义仓库 URL 模板
+def ARTIFACT_REPO_SNAPSHOTS_TEMPLATE = "http://example.com/repositories/${app}-snapshots"
+def ARTIFACT_REPO_RELEASES_TEMPLATE = "http://example.com/repositories/${app}-releases"
+
+// 定义 Artifact 与仓库 `app` 部分的映射
+def ARTIFACT_REPO_MAPPINGS = [
+    "udw-exporter"          : "udw",
+    "dremio-flight-proxy-lps": "risk"
+]
+
+// 获取 Artifact 的版本
+def getArtifactVersions(artifactId, groupId, isThirdParty = false, env = "stage", versionRejectConditions = []) {
+    // 获取 Artifact 对应的 `app`
+    def app = ARTIFACT_REPO_MAPPINGS.get(artifactId, null)
+    if (!app) {
+        error("Artifact ID ${artifactId} is not mapped to any repository app!")
+    }
+
+    // 根据环境决定仓库
+    def repos = []
+    if (env == "production") {
+        repos = [ARTIFACT_REPO_RELEASES_TEMPLATE.replace("${app}", app)] // 生产环境只获取 release 仓库
+    } else {
+        repos = [
+            ARTIFACT_REPO_SNAPSHOTS_TEMPLATE.replace("${app}", app),
+            ARTIFACT_REPO_RELEASES_TEMPLATE.replace("${app}", app)
+        ] // 非生产环境同时获取 snapshot 和 release 仓库
+    }
+
+    def allVersions = []
+    repos.each { repoUrl ->
+        nexus.setMasterRepo(repoUrl)
+        def versions = nexus.versions("${groupId}.${artifactId}")
+        allVersions += versions // 累加从每个仓库获取的版本
+    }
+
+    // 动态获取版本拒绝条件
+    def rejectConditions = getVersionRejectConditions(artifactId)
+
+    // 过滤掉被拒绝的版本
+    def filteredVersions = allVersions.findAll { version ->
+        !rejectConditions.any { condition -> condition(version) }
+    }
+
+    // 返回过滤后的版本（逆序排列）
+    return filteredVersions.unique().reverse() // 去重后逆序返回
+}
+
+// 获取版本拒绝条件
+def getVersionRejectConditions(artifactId) {
+    def VERSION_REJECT_CONDITIONS_MAP = [
+        "udw-exporter"          : [ { it -> it.contains("SNAPSHOT") }, { it -> it.startsWith("0.") } ],
+        "dremio-flight-proxy-lps": [ { it -> it.endsWith("-beta") }, { it -> it.contains("deprecated") } ],
+        "default"               : [ { it -> false } ] // 默认空条件
+    ]
+    return VERSION_REJECT_CONDITIONS_MAP.get(artifactId, VERSION_REJECT_CONDITIONS_MAP["default"])
+}
+
+// Nexus Mock 类（模拟 Nexus 行为）
+class NexusMock {
+    def setMasterRepo(repoUrl) {
+        println("Setting master repo: ${repoUrl}")
+    }
+
+    def versions(artifactId) {
+        println("Fetching versions for: ${artifactId}")
+        // 模拟不同仓库的返回值
+        if (artifactId.contains("snapshots")) {
+            return ["1.0.0-SNAPSHOT", "2.0.0-SNAPSHOT"]
+        } else if (artifactId.contains("releases")) {
+            return ["1.0.0", "2.0.0"]
+        }
+        return []
+    }
+}
+
+def nexus = new NexusMock()
+
+// 测试
+def artifactId = "udw-exporter"
+def groupId = "com.example.group"
+
+// 非生产环境测试
+def stageVersions = getArtifactVersions(artifactId, groupId, false, "stage")
+println("Stage Versions: ${stageVersions}") // 输出：["2.0.0", "1.0.0", "2.0.0-SNAPSHOT", "1.0.0-SNAPSHOT"]
+
+// 生产环境测试
+def prodVersions = getArtifactVersions(artifactId, groupId, false, "production")
+println("Production Versions: ${prodVersions}") // 输出：["2.0.0", "1.0.0"]
