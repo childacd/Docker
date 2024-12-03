@@ -1,0 +1,23 @@
+def ARTIFACT_REPO_SNAPSHOTS = "http://fid-nexus-master.com/ETCB/nexus/content/repositories"
+def ARTIFACT_REPO_RELEASES = "http://fid-nexus-master.com/ETCB/nexus/content/repositories"
+def NEXUS_THIRD_PARTY_REPO = "http://fid-nexus-master.com/ETCB/nexus/content/repositories/thirdparty"
+def ARTIFACT_REPOS_DEFAULT = "default"
+
+def ARTIFACT_REPOS_MAPPINGS = [
+    "udw-exporter"          : "udw",
+    "dremio-flight-proxy-lps": "risk"
+]
+
+def getRepo(artifactId, isThirdParty) {
+    if (isThirdParty) {
+        return NEXUS_THIRD_PARTY_REPO
+    }
+    def app = ARTIFACT_REPOS_MAPPINGS.get(artifactId, ARTIFACT_REPOS_DEFAULT)
+    def env = JENKINS_ENV?.toString()
+    if (!env) {
+        error("JENKINS_ENV is not defined")
+    }
+    return env.equals("production") ?
+        "${ARTIFACT_REPO_RELEASES}/${app}-releases" :
+        "${ARTIFACT_REPO_SNAPSHOTS}/${app}-snapshots"
+}
