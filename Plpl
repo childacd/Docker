@@ -1,0 +1,74 @@
+// 定义版本拒绝条件映射
+def VERSION_REJECT_CONDITIONS_MAP = [
+    "udw-exporter"          : [ { it -> it.contains("SNAPSHOT") }, { it -> it.startsWith("0.") } ],
+    "dremio-flight-proxy-lps": [ { it -> it.endsWith("-beta") }, { it -> it.contains("deprecated") } ],
+    "default"               : [ { it -> false } ] // 默认条件：不拒绝任何版本
+]
+
+// 定义 Artifact 和 Repository 的映射
+def ARTIFACT_REPOS_VAR_PREFIX_MAPPINGS = [
+    "udw-exporter"          : "udw",
+    "dremio-flight-proxy-lps": "risk"
+]
+def ARTIFACT_REPOS_VAR_PREFIX_DEFAULT = "default"
+
+// 模拟 Nexus 的接口（用于获取版本数据）
+class NexusMock {
+    def setMasterRepo(repoUrl) {
+        println("Setting master repo: ${repoUrl}")
+    }
+
+    def getRepo() {
+        return ["1.0.0", "0.9.0", "1.0.0-SNAPSHOT", "2.0.0-beta", "2.1.0-deprecated"]
+    }
+
+    def versions(artifactId) {
+        return getRepo() // 返回所有版本数据
+    }
+}
+
+def nexus = new NexusMock()
+
+// 获取版本拒绝条件
+def getVersionRejectConditions(artifactId) {
+    // 从映射中获取版本拒绝条件，如果没有则使用默认条件
+    return VERSION_REJECT_CONDITIONS_MAP.get(artifactId, VERSION_REJECT_CONDITIONS_MAP["default"])
+}
+
+// 获取 Repository URL
+def getRepoByArtifactIdAndIsThirdParty(artifactId, isThirdParty) {
+    if (isThirdParty) {
+        return "http://example.com/third-party-repo"
+    }
+    def repoVarPrefix = ARTIFACT_REPOS_VAR_PREFIX_MAPPINGS.get(artifactId, ARTIFACT_REPOS_VAR_PREFIX_DEFAULT)
+    return "http://example.com/${repoVarPrefix}-repo"
+}
+
+// 获取 Artifact 的可用版本
+def getArtifactVersions(artifactId, groupId, isThirdParty = false) {
+    def repoUrl = getRepoByArtifactIdAndIsThirdParty(artifactId, isThirdParty)
+
+    // 设置 Nexus 的仓库
+    nexus.setMasterRepo(repoUrl)
+
+    // 获取所有版本
+    def versions = nexus.versions("${groupId}.${artifactId}")
+
+    // 动态获取版本拒绝条件
+    def rejectConditions = getVersionRejectConditions(artifactId)
+
+    // 过滤掉被拒绝的版本
+    def filteredVersions = versions.findAll { version ->
+        !rejectConditions.any { condition -> condition(version) }
+    }
+
+    // 返回过滤后的版本（逆序排列）
+    return filteredVersions.reverse()
+}
+
+// 测试
+def artifactId = "udw-exporter"
+def groupId = "com.example.group"
+def versions = getArtifactVersions(artifactId, groupId)
+
+println("Filtered Versions: ${versions}") // 输出过滤后的版本
