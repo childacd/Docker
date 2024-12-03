@@ -1,0 +1,11 @@
+def repos = [
+    "http://example.com/repo1-snapshots",
+    "http://example.com/repo2-releases",
+    "http://example.com/repo3-snapshots",
+    "http://example.com/repo4-releases"
+]
+
+def env = "production" // 当前环境
+
+repos = env == "production" ? repos.findAll { !it.toLowerCase().contains("snapshot") } : repos
+println(repos)
