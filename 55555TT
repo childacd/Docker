@@ -1,0 +1,86 @@
+import os
+import configparser
+import tkinter as tk
+from tkinter import filedialog, messagebox
+
+# 配置文件路径
+CONFIG_FILE = "config.ini"
+DEFAULT_PATH = os.path.expanduser("~/Documents")
+
+def load_config():
+    """加载配置文件，如果文件不存在则创建一个新的"""
+    config = configparser.ConfigParser()
+    if os.path.exists(CONFIG_FILE):
+        config.read(CONFIG_FILE)
+    else:
+        # 如果配置文件不存在，创建一个空的默认结构
+        config['DEFAULT'] = {}
+    return config
+
+def save_config(config):
+    """保存配置文件"""
+    with open(CONFIG_FILE, "w") as f:
+        config.write(f)
+
+def browse_file(entry_widget, key):
+    """文件选择器"""
+    selected_path = filedialog.askopenfilename(initialdir=DEFAULT_PATH)
+    if selected_path:
+        entry_widget.delete(0, tk.END)
+        entry_widget.insert(0, selected_path)
+        config['DEFAULT'][key] = selected_path
+
+def save_and_exit():
+    """保存配置并退出"""
+    for key, entry in entries.items():
+        config['DEFAULT'][key] = entry.get()
+    save_config(config)
+    messagebox.showinfo("保存成功", "配置已保存到 config.ini")
+    root.destroy()
+
+# 加载配置
+config = load_config()
+
+# 创建主窗口
+root = tk.Tk()
+root.title("路径配置工具")
+
+# 允许窗口调整大小
+root.grid_columnconfigure(1, weight=1)  # 输入框所在的列动态伸缩
+root.resizable(True, True)
+
+entries = {}
+
+# 定义路径的键
+path_keys = [
+    "uls_excel_file",
+    "acct_seg_file",
+    "BT_file",
+    "path_4",
+    "path_5",
+    "path_6",
+    "path_7",
+    "path_8"
+]
+
+# 创建UI组件
+for i, key in enumerate(path_keys):
+    tk.Label(root, text=f"{key}:").grid(row=i, column=0, padx=10, pady=5, sticky="e")
+    
+    # 路径输入框
+    path_value = config['DEFAULT'].get(key, DEFAULT_PATH)
+    entry = tk.Entry(root, width=50)
+    entry.insert(0, path_value)
+    entry.grid(row=i, column=1, padx=10, pady=5, sticky="ew")  # 设置sticky为扩展
+    entries[key] = entry
+
+    # 浏览按钮
+    browse_button = tk.Button(root, text="浏览", command=lambda e=entry, k=key: browse_file(e, k))
+    browse_button.grid(row=i, column=2, padx=10, pady=5)
+
+# 保存按钮
+save_button = tk.Button(root, text="保存并退出", command=save_and_exit)
+save_button.grid(row=len(path_keys), column=1, pady=10)
+
+# 运行主循环
+root.mainloop()
