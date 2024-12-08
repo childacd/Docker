@@ -1,0 +1,25 @@
+import pandas as pd
+import os
+
+# 从 config.ini 或 GUI 获取输出路径
+output_file = "从config.ini读取的路径".strip()  # 替换为实际的路径读取逻辑
+
+# 验证路径
+if not output_file.endswith(".xlsx"):
+    output_file += ".xlsx"
+if not os.path.exists(os.path.dirname(output_file)):
+    raise ValueError(f"路径无效，目录不存在: {os.path.dirname(output_file)}")
+
+# 创建测试数据
+data = {
+    "列1": ["值1", "值2", "值3"],
+    "列2": [1, 2, 3]
+}
+df = pd.DataFrame(data)
+
+# 写入 Excel
+try:
+    df.to_excel(output_file, index=False, engine="openpyxl")
+    print(f"文件成功保存到: {output_file}")
+except Exception as e:
+    print(f"写入 Excel 文件失败: {e}")
