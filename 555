@@ -1,0 +1,69 @@
+import tkinter as tk
+from tkinter import filedialog, messagebox
+import os
+import json
+
+# 配置文件路径
+CONFIG_FILE = "config.json"
+
+# 默认路径
+DEFAULT_PATH = os.path.expanduser("~/Documents")
+
+def load_config():
+    """加载配置文件"""
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r") as f:
+            return json.load(f)
+    return {"path": DEFAULT_PATH}
+
+def save_config(config):
+    """保存配置文件"""
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(config, f, indent=4)
+
+def browse_file():
+    """打开文件选择器"""
+    new_path = filedialog.askdirectory(initialdir=config.get("path", DEFAULT_PATH))
+    if new_path:
+        path_var.set(new_path)
+
+def save_and_run():
+    """保存配置并运行命令"""
+    config["path"] = path_var.get()
+    save_config(config)
+    messagebox.showinfo("提示", f"路径已保存为: {config['path']}")
+    run_commands(config["path"])
+
+def run_commands(path):
+    """运行命令"""
+    # 示例逻辑：这里写你需要运行的命令
+    if os.path.exists(path):
+        messagebox.showinfo("运行结果", f"成功处理路径: {path}")
+    else:
+        messagebox.showerror("错误", f"路径不存在: {path}")
+
+# 加载配置
+config = load_config()
+
+# 创建主窗口
+root = tk.Tk()
+root.title("配置路径选择器")
+
+# 界面布局
+tk.Label(root, text="配置路径:").grid(row=0, column=0, padx=10, pady=10)
+
+# 显示路径的文本框
+path_var = tk.StringVar(value=config.get("path", DEFAULT_PATH))
+path_entry = tk.Entry(root, textvariable=path_var, width=50)
+path_entry.grid(row=0, column=1, padx=10, pady=10)
+
+# 浏览按钮
+browse_button = tk.Button(root, text="浏览", command=browse_file)
+browse_button.grid(row=0, column=2, padx=10, pady=10)
+
+# 保存并运行按钮
+run_button = tk.Button(root, text="保存并运行", command=save_and_run)
+run_button.grid(row=1, column=1, pady=10)
+
+# 运行主循环
+root.mainloop()
