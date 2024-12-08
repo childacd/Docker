@@ -1,0 +1,29 @@
+import pandas as pd
+from concurrent.futures import ThreadPoolExecutor
+
+# 定义每块读取的行数
+chunksize = 10000
+
+def read_chunk(start_row):
+    """读取指定范围的数据块"""
+    return pd.read_excel(
+        'large_file.xlsx',
+        skiprows=start_row,
+        nrows=chunksize,
+        header=0 if start_row == 0 else None
+    )
+
+# 计算总行数（可以用 pd.read_excel() 的 metadata 获取）
+total_rows = 100000  # 假设总行数
+
+# 生成每块的起始行
+start_rows = range(0, total_rows, chunksize)
+
+# 多线程读取
+with ThreadPoolExecutor() as executor:
+    chunks = list(executor.map(read_chunk, start_rows))
+
+# 合并所有块
+df = pd.concat(chunks, ignore_index=True)
+
+print(df.head())
