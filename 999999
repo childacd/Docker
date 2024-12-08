@@ -1,0 +1,150 @@
+import os
+import configparser
+import tkinter as tk
+from tkinter import filedialog, messagebox
+
+# 配置文件路径
+CONFIG_FILE = "config.ini"
+DEFAULT_PATH = os.path.expanduser("~/Documents")
+
+# 定义全局变量
+uls_excel_file = None
+acct_seg_file = None
+BT_file = None
+output_file = None
+
+def load_config():
+    """加载配置文件，如果文件不存在则创建一个新的"""
+    config = configparser.ConfigParser()
+    if os.path.exists(CONFIG_FILE):
+        config.read(CONFIG_FILE)
+    else:
+        # 如果配置文件不存在，创建一个空的默认结构
+        config['DEFAULT'] = {}
+    return config
+
+def save_config(config):
+    """保存配置文件"""
+    with open(CONFIG_FILE, "w") as f:
+        config.write(f)
+
+def browse_file(entry_widget, key):
+    """文件选择器"""
+    selected_path = filedialog.askopenfilename(initialdir=DEFAULT_PATH)
+    if selected_path:
+        entry_widget.delete(0, tk.END)
+        entry_widget.insert(0, selected_path)
+        config['DEFAULT'][key] = selected_path
+        update_global_variable(key, selected_path)
+
+def browse_output_file(entry_widget, key):
+    """保存文件对话框"""
+    selected_path = filedialog.asksaveasfilename(initialdir=DEFAULT_PATH, defaultextension=".txt",
+                                                 filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")])
+    if selected_path:
+        entry_widget.delete(0, tk.END)
+        entry_widget.insert(0, selected_path)
+        config['DEFAULT'][key] = selected_path
+        update_global_variable(key, selected_path)
+
+def update_global_variable(key, value):
+    """更新全局变量"""
+    global uls_excel_file, acct_seg_file, BT_file, output_file
+    if key == "uls_excel_file":
+        uls_excel_file = value
+    elif key == "acct_seg_file":
+        acct_seg_file = value
+    elif key == "BT_file":
+        BT_file = value
+    elif key == "output_file":
+        output_file = value
+
+def save_and_run_logic():
+    """保存配置并执行逻辑"""
+    for key, entry in entries.items():
+        config['DEFAULT'][key] = entry.get()
+        update_global_variable(key, entry.get())  # 更新全局变量
+
+    save_config(config)
+    messagebox.showinfo("保存成功", "配置已保存到 config.ini")
+
+    # 执行接下来的逻辑
+    execute_logic()
+
+def execute_logic():
+    """执行后续逻辑"""
+    try:
+        print("后续逻辑中使用的路径变量:")
+        print(f"uls_excel_file: {uls_excel_file}")
+        print(f"acct_seg_file: {acct_seg_file}")
+        print(f"BT_file: {BT_file}")
+        print(f"output_file: {output_file}")
+
+        # 示例：检查输入路径是否存在
+        if not os.path.exists(uls_excel_file):
+            raise FileNotFoundError(f"路径不存在: {uls_excel_file}")
+        if not os.path.exists(acct_seg_file):
+            raise FileNotFoundError(f"路径不存在: {acct_seg_file}")
+        if not os.path.exists(BT_file):
+            raise FileNotFoundError(f"路径不存在: {BT_file}")
+
+        # 这里可以执行主要逻辑，比如生成 output_file
+        print("所有路径有效，开始主要逻辑...")
+        # 示例主要逻辑
+        with open(output_file, "w") as f:
+            f.write("这是生成的输出文件内容\n")
+        print(f"输出文件已生成: {output_file}")
+    except Exception as e:
+        messagebox.showerror("错误", str(e))
+
+# 加载配置
+config = load_config()
+
+# 初始化全局变量
+uls_excel_file = config['DEFAULT'].get("uls_excel_file", DEFAULT_PATH)
+acct_seg_file = config['DEFAULT'].get("acct_seg_file", DEFAULT_PATH)
+BT_file = config['DEFAULT'].get("BT_file", DEFAULT_PATH)
+output_file = config['DEFAULT'].get("output_file", os.path.join(DEFAULT_PATH, "output.txt"))
+
+# 创建主窗口
+root = tk.Tk()
+root.title("路径配置工具")
+
+# 允许窗口调整大小
+root.grid_columnconfigure(1, weight=1)  # 输入框所在的列动态伸缩
+root.resizable(True, True)
+
+entries = {}
+
+# 定义路径的键
+path_keys = [
+    "uls_excel_file",  # 输入文件
+    "acct_seg_file",   # 输入文件
+    "BT_file",         # 输入文件
+    "output_file"      # 输出文件
+]
+
+# 创建UI组件
+for i, key in enumerate(path_keys):
+    tk.Label(root, text=f"{key}:").grid(row=i, column=0, padx=10, pady=5, sticky="e")
+    
+    # 路径输入框
+    path_value = config['DEFAULT'].get(key, DEFAULT_PATH)
+    entry = tk.Entry(root, width=50)
+    entry.insert(0, path_value)
+    entry.grid(row=i, column=1, padx=10, pady=5, sticky="ew")  # 设置sticky为扩展
+    entries[key] = entry
+
+    # 浏览按钮：区分输入文件和输出文件
+    if key == "output_file":
+        browse_button = tk.Button(root, text="选择保存路径", command=lambda e=entry, k=key: browse_output_file(e, k))
+    else:
+        browse_button = tk.Button(root, text="浏览", command=lambda e=entry, k=key: browse_file(e, k))
+    browse_button.grid(row=i, column=2, padx=10, pady=5)
+
+# 保存并运行按钮
+save_button = tk.Button(root, text="保存并运行", command=save_and_run_logic)
+save_button.grid(row=len(path_keys), column=1, pady=10)
+
+# 运行主循环
+root.mainloop()
