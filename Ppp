@@ -1,0 +1,18 @@
+import itertools
+import math
+
+# 用 A 到 P 表示 16 個人
+people = [chr(i) for i in range(ord('A'), ord('A') + 16)]
+
+# 生成所有兩兩組合
+combinations = list(itertools.combinations(people, 2))
+
+# 計算方形行數和列數
+total_combinations = len(combinations)
+columns = math.ceil(math.sqrt(total_combinations))  # 每行組合數
+rows = math.ceil(total_combinations / columns)     # 總行數
+
+# 按方形格式打印
+for i in range(rows):
+    row_combinations = combinations[i * columns:(i + 1) * columns]
+    print("  ".join(f"{pair[0]}-{pair[1]}" for pair in row_combinations))
