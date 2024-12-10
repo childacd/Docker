@@ -1,0 +1,11 @@
+import itertools
+
+# 用 A 到 P 表示 16 个人
+people = [chr(i) for i in range(ord('A'), ord('A') + 16)]
+
+# 生成所有两两组合
+combinations = list(itertools.combinations(people, 2))
+
+# 輸出所有組合
+for pair in combinations:
+    print(pair)
