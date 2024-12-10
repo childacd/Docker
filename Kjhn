@@ -1,0 +1,25 @@
+import itertools
+
+# 用 A 到 P 表示 16 個人
+people = [chr(i) for i in range(ord('A'), ord('A') + 16)]
+
+# 生成所有可能的比賽組合（4 人一組）
+matches = list(itertools.combinations(people, 4))
+
+# 確保每個人打滿 15 場
+# 簡單排列可以按需求微調
+selected_matches = []
+player_match_count = {p: 0 for p in people}
+
+# 選擇滿足條件的比賽
+for match in matches:
+    if all(player_match_count[p] < 15 for p in match):
+        selected_matches.append(match)
+        for p in match:
+            player_match_count[p] += 1
+        if len(selected_matches) == 60:  # 達到 60 場即可
+            break
+
+# 輸出比賽組合
+for i, match in enumerate(selected_matches, start=1):
+    print(f"第 {i} 場: {match}")
