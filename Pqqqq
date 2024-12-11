@@ -1,0 +1,82 @@
+要在 AWS Batch 中使用指定的 AMI 创建 Launch Template，并将其应用到计算环境，可以按照以下步骤操作：
+
+更新需求
+
+	1.	创建 Launch Template：指定 AMI ID 并设置其他配置（如实例类型、安全组等）。
+	2.	创建 Compute Environment：引用创建的 Launch Template。
+	3.	队列和作业部分保持不变。
+
+步骤 1: 创建 Launch Template
+
+使用 AWS CLI 创建一个 Launch Template，并指定你的 AMI ID：
+
+aws ec2 create-launch-template \
+    --launch-template-name "Kim-test-launch-template" \
+    --version-description "Initial version" \
+    --launch-template-data '{
+        "ImageId": "<your-ami-id>",
+        "InstanceType": "t3.micro",
+        "SecurityGroupIds": ["<your-security-group-id>"],
+        "UserData": "IyEvYmluL2Jhc2gKZWNobyAiSGVsbG8gZnJvbSBMYXVuY2ggVGVtcGxhdGUhIiA="
+    }'
+
+参数说明
+
+	•	ImageId: 替换为你已有的 AMI ID。
+	•	InstanceType: 指定实例类型（可根据需求调整）。
+	•	SecurityGroupIds: 替换为适合你的环境的安全组 ID。
+	•	UserData（可选）：定义实例启动时的用户数据脚本（这里为简单的示例）。
+
+步骤 2: 创建 Compute Environment
+
+将上面创建的 Launch Template 应用到计算环境：
+
+aws batch create-compute-environment \
+    --compute-environment-name "Kim-test-env" \
+    --type MANAGED \
+    --state ENABLED \
+    --compute-resources '{
+        "type": "EC2",
+        "minvCpus": 0,
+        "maxvCpus": 4,
+        "desiredvCpus": 1,
+        "instanceTypes": ["t3.micro"],
+        "launchTemplate": {
+            "launchTemplateName": "Kim-test-launch-template"
+        },
+        "subnets": ["<your-subnet-id>"],
+        "securityGroupIds": ["<your-security-group-id>"],
+        "instanceRole": "ecsInstanceRole"
+    }'
+
+参数说明
+
+	•	launchTemplate.launchTemplateName: 引用刚刚创建的 Launch Template 名字。
+	•	instanceTypes: 实例类型必须与 Launch Template 中的类型兼容。
+	•	其他参数（如 subnets 和 securityGroupIds）：替换为你的网络配置。
+
+步骤 3: 提交作业
+
+队列和作业定义部分保持不变（参见之前的配置），通过 AWS Batch 提交任务，AWS 将基于指定的 Launch Template 启动计算实例。
+
+清理命令
+
+删除 Launch Template
+
+aws ec2 delete-launch-template --launch-template-name "Kim-test-launch-template"
+
+删除计算环境
+
+aws batch delete-compute-environment --compute-environment-name "Kim-test-env"
+
+删除队列和作业定义
+
+参考之前的清理命令。
+
+验证
+
+	1.	在 AWS Batch 控制台，检查是否正确加载了指定 AMI。
+	2.	在 EC2 控制台，查看实例是否基于指定的 Launch Template 创建。
+	3.	测试任务运行时的行为（如用户数据执行效果）。
+
+如果需要进一步调整或排查，随时联系我！
