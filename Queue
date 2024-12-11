@@ -1,0 +1,96 @@
+在AWS中模拟队列排队和计算环境负载场景，你可以使用AWS Batch，它提供了计算环境（Compute Environment）、队列（Queue）和任务定义（Job Definition）来实现这些功能。以下是一个实现思路，旨在资源消耗最小化的情况下模拟这些场景：
+
+步骤 1: 创建基础设施
+
+	1.	创建计算环境（Compute Environment）
+	•	定义一个管理型计算环境，指定最小、期望和最大容量为较低值（例如，最小实例数为0，期望实例数为1，最大实例数为2）。
+	•	创建两个或多个不同的计算环境，模拟不同的计算资源池（如不同的EC2实例类型）。
+	2.	创建作业队列（Job Queue）
+	•	创建两个队列，并将它们与不同的计算环境绑定。
+	•	配置队列优先级，确保一个队列可以在另一个队列满时被选择。
+	3.	创建作业定义（Job Definition）
+	•	定义一个简单的作业，例如运行一个短时间的脚本（如打印Hello World或模拟任务执行的睡眠命令）。
+
+步骤 2: 提交任务
+
+	1.	模拟计算环境满载
+	•	提交多于计算环境最大容量的任务（例如提交5个任务到最大容量为2的计算环境），观察任务如何在队列中排队。
+	2.	模拟任务分配到不同计算环境
+	•	提交任务到队列中，确保当一个计算环境满载时，任务可以切换到另一个队列或计算环境。
+	3.	测试优先级排队
+	•	提交多个任务到优先级较低的队列，然后再提交任务到优先级较高的队列，观察任务分配情况。
+
+步骤 3: 配置资源节约策略
+
+	1.	在计算环境中启用“按需实例”和“Spot实例”的混合模式，降低成本。
+	2.	设置较低的计算实例类型（如t2.micro或t3.micro），以减少费用。
+	3.	提交轻量级任务（如运行简单命令或短时脚本）。
+
+具体实现步骤（CLI 示例）
+
+以下是通过AWS CLI完成的具体操作：
+
+1. 创建计算环境
+
+aws batch create-compute-environment \
+    --compute-environment-name "low-priority-env" \
+    --type MANAGED \
+    --state ENABLED \
+    --compute-resources '{"type":"EC2","minvCpus":0,"maxvCpus":2,"desiredvCpus":1,"instanceTypes":["t3.micro"],"subnets":["<your-subnet-id>"],"securityGroupIds":["<your-security-group-id>"],"instanceRole":"ecsInstanceRole"}'
+
+aws batch create-compute-environment \
+    --compute-environment-name "high-priority-env" \
+    --type MANAGED \
+    --state ENABLED \
+    --compute-resources '{"type":"EC2","minvCpus":0,"maxvCpus":2,"desiredvCpus":1,"instanceTypes":["t3.micro"],"subnets":["<your-subnet-id>"],"securityGroupIds":["<your-security-group-id>"],"instanceRole":"ecsInstanceRole"}'
+
+2. 创建队列
+
+aws batch create-job-queue \
+    --job-queue-name "low-priority-queue" \
+    --state ENABLED \
+    --priority 1 \
+    --compute-environment-order computeEnvironment="low-priority-env",order=1
+
+aws batch create-job-queue \
+    --job-queue-name "high-priority-queue" \
+    --state ENABLED \
+    --priority 10 \
+    --compute-environment-order computeEnvironment="high-priority-env",order=1
+
+3. 创建作业定义
+
+aws batch register-job-definition \
+    --job-definition-name "test-job" \
+    --type "container" \
+    --container-properties '{"image":"amazonlinux","vcpus":1,"memory":128,"command":["/bin/bash","-c","sleep 30"]}'
+
+4. 提交任务
+
+提交任务到低优先级队列：
+
+aws batch submit-job \
+    --job-name "test-job-1" \
+    --job-queue "low-priority-queue" \
+    --job-definition "test-job"
+
+提交任务到高优先级队列：
+
+aws batch submit-job \
+    --job-name "test-job-2" \
+    --job-queue "high-priority-queue" \
+    --job-definition "test-job"
+
+验证场景
+
+	1.	在AWS Console的Batch页面查看任务状态（排队、运行、失败等）。
+	2.	调整提交任务的数量和队列优先级，验证任务调度的行为。
+	3.	在计算环境满载后，观察队列中的任务是否等待或切换到其他队列。
+
+如果需要进一步优化资源消耗，可以尝试：
+
+	•	缩短任务执行时间（如将sleep 30改为sleep 5）。
+	•	减少计算环境的最大容量。
+	•	使用Spot实例降低成本。
+
+需要帮助配置或者调试时可以随时问我！
