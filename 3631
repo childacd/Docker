@@ -1,0 +1,4 @@
+aws batch describe-job-queues | jq -r '
+.jobQueues[] | 
+    "\(.jobQueueName): \(.computeEnvironmentOrder[] | "\(.computeEnvironment) (Order: \(.order))")"
+'
