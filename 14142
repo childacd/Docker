@@ -1,0 +1,1 @@
+kubectl get svc --all-namespaces -o custom-columns='NAMESPACE:metadata.namespace,NAME:metadata.name,TYPE:spec.type,NODEPORT:spec.ports[?(@.nodePort)].nodePort'
