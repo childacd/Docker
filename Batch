@@ -1,0 +1,325 @@
+以下是一个完整的 Jenkinsfile，展示如何定义并使用变量，将参数传递到 Terraform 的执行过程中。这个文件设计用于支持多个业务场景的 Queue 和 Compute Environment 动态映射。
+
+Jenkinsfile 示例
+
+pipeline {
+    agent any
+
+    parameters {
+        // Jenkins 参数 1：定义 `sft-bt-batch` 的映射关系
+        text(name: 'SFT_BT_BATCH', 
+             defaultValue: '''{
+    "sft-bt-queue-1": ["sft-bt-comp-env-1"],
+    "sft-bt-queue-2": ["sft-bt-comp-env-2", "sft-bt-comp-env-3"],
+    "sft-bt-queue-3": ["sft-bt-comp-env-3"],
+    "sft-bt-queue-4": ["sft-bt-comp-env-4"]
+}''', 
+             description: 'Queue to Compute Environment mapping for sft-bt-batch in JSON format.')
+
+        // Jenkins 参数 2：定义 `sft-pringle-batch` 的映射关系
+        text(name: 'SFT_PRINGLE_BATCH', 
+             defaultValue: '''{
+    "sft-queue-1": ["sft-comp-env-1"],
+    "sft-queue-2": ["sft-comp-env-2"],
+    "sft-queue-3": ["sft-comp-env-3"],
+    "sft-queue-4": ["sft-comp-env-4"]
+}''', 
+             description: 'Queue to Compute Environment mapping for sft-pringle-batch in JSON format.')
+    }
+
+    environment {
+        // 定义 Terraform 工作目录
+        TF_WORKSPACE = 'terraform'
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                echo 'Checking out source code...'
+                checkout scm
+            }
+        }
+
+        stage('Prepare Parameters') {
+            steps {
+                script {
+                    // 将 Jenkins 参数解析成 Terraform 需要的格式
+                    def batchQueueEnvMap = [
+                        'sft-bt-batch': readJSON(text: params.SFT_BT_BATCH),
+                        'sft-pringle-batch': readJSON(text: params.SFT_PRINGLE_BATCH)
+                    ]
+
+                    // 将数据序列化为 JSON 并存储到文件供 Terraform 使用
+                    writeJSON file: "${TF_WORKSPACE}/batch_queue_env_map.json", json: batchQueueEnvMap
+
+                    echo "Generated batch_queue_env_map.json:\n${batchQueueEnvMap}"
+                }
+            }
+        }
+
+        stage('Initialize Terraform') {
+            steps {
+                dir(TF_WORKSPACE) {
+                    sh '''
+                    terraform init
+                    terraform workspace new default || terraform workspace select default
+                    '''
+                }
+            }
+        }
+
+        stage('Apply Terraform Configuration') {
+            steps {
+                dir(TF_WORKSPACE) {
+                    // 将 batch_queue_env_map.json 传递给 Terraform
+                    sh '''
+                    terraform apply -var-file="batch_queue_env_map.json" -auto-approve
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo 'Pipeline finished.'
+        }
+    }
+}
+
+解释各部分内容
+
+1. 参数定义
+
+	•	SFT_BT_BATCH 和 SFT_PRINGLE_BATCH：
+	•	分别定义两个批次的 Queue 和 Compute Environment 映射关系。
+	•	使用 多行文本框（text 参数类型）输入 JSON 格式的映射。
+	•	用户可以通过 Jenkins 的 UI 界面直接编辑这些参数。
+
+2. 环境变量
+
+	•	定义了 TF_WORKSPACE，指向 Terraform 的工作目录。
+
+3. 阶段说明
+
+	1.	Checkout Code:
+	•	从版本控制系统（如 Git）中检出代码。
+	2.	Prepare Parameters:
+	•	将 Jenkins 输入的参数解析成 JSON 格式的 Map。
+	•	生成一个 batch_queue_env_map.json 文件，存储到 Terraform 工作目录。
+	3.	Initialize Terraform:
+	•	初始化 Terraform，准备后续的资源操作。
+	4.	Apply Terraform Configuration:
+	•	使用 terraform apply，将 batch_queue_env_map.json 文件作为变量传递给 Terraform 执行资源创建。
+
+4. Terraform 配置文件变量处理
+
+Terraform 的 variables.tf 文件需要添加以下内容，以接收 Jenkins 传递的 JSON 文件：
+
+variable "batch_queue_env_map" {
+  description = "Mapping of multiple batches with Queues and Compute Environments"
+  type        = map(map(list(string)))
+}
+
+将 batch_queue_env_map.json 文件加载为变量值时，Terraform 命令如下：
+
+terraform apply -var-file="batch_queue_env_map.json"
+
+用户操作步骤
+
+	1.	打开 Jenkins Pipeline 的配置页面。
+	2.	在 参数化构建 中输入 JSON 格式的映射关系，例如：
+	•	对于 SFT_BT_BATCH：
+
+{
+  "sft-bt-queue-1": ["sft-bt-comp-env-1"],
+  "sft-bt-queue-2": ["sft-bt-comp-env-2", "sft-bt-comp-env-3"],
+  "sft-bt-queue-3": ["sft-bt-comp-env-3"],
+  "sft-bt-queue-4": ["sft-bt-comp-env-4"]
+}
+
+
+	•	对于 SFT_PRINGLE_BATCH：
+
+{
+  "sft-queue-1": ["sft-comp-env-1"],
+  "sft-queue-2": ["sft-comp-env-2"],
+  "sft-queue-3": ["sft-comp-env-3"],
+  "sft-queue-4": ["sft-comp-env-4"]
+}
+
+
+	3.	运行 Jenkins Pipeline，等待资源创建完成。
+
+最终效果
+
+	1.	Jenkins 将参数传递到 Terraform。
+	2.	Terraform 自动解析并创建：
+	•	所有指定的 Compute Environment。
+	•	所有指定的 Job Queue。
+	•	正确绑定 Queue 和其对应的 Compute Environment。
+	3.	支持动态扩展多个业务场景，只需修改 Jenkins 参数，无需更改 Terraform 代码。
+
+如果你还有其他问题，欢迎继续讨论！
+
+------
+根据你提供的两个 Jenkins 参数（sft-bt-batch 和 sft-pringle-batch），以及前面定义的 Terraform 逻辑，以下是完整的 Terraform 脚本实现，支持：
+
+	1.	动态创建 Queue 和 Compute Environment。
+	2.	正确绑定 Queue 和其对应的 Compute Environment。
+	3.	同时支持多个业务场景，每个业务场景（如 sft-bt-batch 和 sft-pringle-batch）可以独立创建资源。
+	4.	支持一对一、多对一、一对多、多对多的映射关系。
+
+完整 Terraform 脚本
+
+1. 变量定义
+
+在 variables.tf 中定义 batch_queue_env_map，支持多个业务场景的映射。
+
+variable "batch_queue_env_map" {
+  description = "Mapping of multiple batches (Jenkins parameters) with Queues and Compute Environments"
+  type = map(map(list(string))) # 第一层是业务场景名称，第二层是 Queue 和 Compute Environment 的映射
+}
+
+示例用户输入（从 Jenkins 传入）：
+
+{
+  "sft-bt-batch": {
+    "sft-bt-queue-1": ["sft-bt-comp-env-1"],
+    "sft-bt-queue-2": ["sft-bt-comp-env-2", "sft-bt-comp-env-3"],
+    "sft-bt-queue-3": ["sft-bt-comp-env-3"],
+    "sft-bt-queue-4": ["sft-bt-comp-env-4"]
+  },
+  "sft-pringle-batch": {
+    "sft-queue-1": ["sft-comp-env-1"],
+    "sft-queue-2": ["sft-comp-env-2"],
+    "sft-queue-3": ["sft-comp-env-3"],
+    "sft-queue-4": ["sft-comp-env-4"]
+  }
+}
+
+2. Compute Environment 创建
+
+动态解析所有业务场景中涉及的 Compute Environment，去重后创建。
+
+resource "aws_batch_compute_environment" "prism_compute" {
+  for_each = toset(flatten([
+    for batch in values(var.batch_queue_env_map) : flatten([for envs in values(batch) : envs])
+  ]))
+
+  compute_environment_name = each.value
+  service_role             = "ecsInstanceRole"
+  type                     = "MANAGED"
+
+  compute_resources {
+    instance_role         = "ecsInstanceRole"
+    instance_type         = "m5.large"
+    max_vcpus             = 1000
+    min_vcpus             = 0
+    desired_vcpus         = 10
+    subnets               = ["subnet-12345", "subnet-67890"]
+    security_group_ids    = ["sg-12345"]
+    allocation_strategy   = "BEST_FIT"
+  }
+}
+
+逻辑说明：
+
+	1.	提取 Compute Environment：
+	•	遍历 batch_queue_env_map 的所有批次，提取所有 Compute Environment 名称。
+	•	使用 toset(flatten(...)) 去重，确保每个 Compute Environment 只创建一次。
+	2.	动态生成资源：
+	•	为每个唯一的 Compute Environment 动态创建资源。
+
+3. Queue 创建及绑定
+
+根据每个业务场景的 Queue 和 Compute Environment 映射关系，动态创建 Queue 并绑定。
+
+resource "aws_batch_job_queue" "prism_queue" {
+  for_each = flatten([
+    for batch_name, batch_map in var.batch_queue_env_map :
+    [for queue_name, env_list in batch_map :
+      {
+        batch_name = batch_name
+        queue_name = queue_name
+        env_list   = env_list
+      }
+    ]
+  ])
+
+  name     = "${each.value.batch_name}-${each.value.queue_name}"
+  priority = 1
+  state    = "ENABLED"
+
+  compute_environment_order {
+    for ce_index, ce_name in each.value.env_list : {
+      compute_environment = ce_name
+      order               = ce_index + 1
+    }
+  }
+}
+
+逻辑说明：
+
+	1.	遍历每个批次：
+	•	使用 flatten 遍历 batch_queue_env_map 的每个批次（batch_name）。
+	•	动态生成每个 Queue 的资源。
+	2.	Queue 命名：
+	•	Queue 名称由 批次名称 和 Queue 名称 拼接，确保在全局范围内唯一。
+	3.	绑定 Compute Environment：
+	•	使用 compute_environment_order 动态绑定用户指定的 Compute Environment 列表，顺序由 ce_index 确定。
+
+运行结果示例
+
+用户输入：
+
+{
+  "sft-bt-batch": {
+    "sft-bt-queue-1": ["sft-bt-comp-env-1"],
+    "sft-bt-queue-2": ["sft-bt-comp-env-2", "sft-bt-comp-env-3"],
+    "sft-bt-queue-3": ["sft-bt-comp-env-3"],
+    "sft-bt-queue-4": ["sft-bt-comp-env-4"]
+  },
+  "sft-pringle-batch": {
+    "sft-queue-1": ["sft-comp-env-1"],
+    "sft-queue-2": ["sft-comp-env-2"],
+    "sft-queue-3": ["sft-comp-env-3"],
+    "sft-queue-4": ["sft-comp-env-4"]
+  }
+}
+
+生成的资源
+
+	1.	Compute Environment：
+	•	sft-bt-comp-env-1
+	•	sft-bt-comp-env-2
+	•	sft-bt-comp-env-3
+	•	sft-bt-comp-env-4
+	•	sft-comp-env-1
+	•	sft-comp-env-2
+	•	sft-comp-env-3
+	•	sft-comp-env-4
+	2.	Job Queue：
+	•	sft-bt-batch-sft-bt-queue-1 绑定：sft-bt-comp-env-1
+	•	sft-bt-batch-sft-bt-queue-2 绑定：sft-bt-comp-env-2, sft-bt-comp-env-3
+	•	sft-bt-batch-sft-bt-queue-3 绑定：sft-bt-comp-env-3
+	•	sft-bt-batch-sft-bt-queue-4 绑定：sft-bt-comp-env-4
+	•	sft-pringle-batch-sft-queue-1 绑定：sft-comp-env-1
+	•	sft-pringle-batch-sft-queue-2 绑定：sft-comp-env-2
+	•	sft-pringle-batch-sft-queue-3 绑定：sft-comp-env-3
+	•	sft-pringle-batch-sft-queue-4 绑定：sft-comp-env-4
+
+整体优势
+
+	1.	支持多业务场景：
+	•	可同时处理多个批次（如 sft-bt-batch 和 sft-pringle-batch），每个批次独立。
+	2.	灵活的映射关系：
+	•	支持一对一、多对一、一对多、多对多的 Queue 和 Compute Environment 映射。
+	3.	代码模块化：
+	•	Compute Environment 和 Queue 动态生成，资源重复问题自动解决。
+	4.	简化用户输入：
+	•	用户只需输入简单的 Key-Value 格式，Terraform 自动完成资源创建和绑定。
+
+如果还有更多优化或特殊需求，可以进一步调整！
+
+------
