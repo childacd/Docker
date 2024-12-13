@@ -1,0 +1,123 @@
+你的设想是完全正确的，保持原有模块路径不变 是一种兼顾向后兼容性和功能扩展性的好做法。下面是为什么这种设计合理，以及如何具体实现这种结构的建议。
+
+1. 为什么不改动原有模块路径是合理的？
+
+1.1 向后兼容
+
+	•	原来的模块（BatchCompute 和 BatchQueue）可能已经被其他项目或模块引用，如果你更改了路径，所有调用这些模块的地方都需要更新 source 路径。
+	•	不改动路径可以避免这种全局性的修改，降低对其他项目的影响。
+
+1.2 灵活扩展
+
+	•	新增一个融合模块，放在与 BatchCompute 和 BatchQueue 同级的位置，可以让新功能独立出来，同时不干扰原有功能。
+
+2. 如何设计目录结构？
+
+在你的项目中，目录结构可以调整为以下形式：
+
+modules/
+├── batch/                     # 新的融合模块
+│   ├── main.tf                # 调用 compute 和 queue 模块
+│   ├── variables.tf           # 融合模块的变量
+│   ├── outputs.tf             # 融合模块的输出
+│   ├── versions.tf            # 融合模块的版本管理
+├── batch-compute/             # 原有 BatchCompute 模块（保持不变）
+│   ├── main.tf
+│   ├── variables.tf
+│   ├── outputs.tf
+│   ├── versions.tf
+├── batch-queue/               # 原有 BatchQueue 模块（保持不变）
+│   ├── main.tf
+│   ├── variables.tf
+│   ├── outputs.tf
+│   ├── versions.tf
+
+3. 新融合模块的实现
+
+新的融合模块会作为一个独立的模块，与原有的 BatchCompute 和 BatchQueue 模块平行。
+
+3.1 batch/main.tf
+
+在融合模块中调用原有模块：
+
+module "compute" {
+  source = "../batch-compute"  # 保持引用原有模块的路径
+
+  compute_env_map = { for k, v in var.queue_env_map : k => flatten(v) }
+}
+
+module "queue" {
+  source = "../batch-queue"  # 保持引用原有模块的路径
+
+  queue_env_map = var.queue_env_map
+}
+
+3.2 batch/variables.tf
+
+在融合模块中，定义用于传递给子模块的变量：
+
+variable "queue_env_map" {
+  description = "Mapping of Queues to Compute Environments"
+  type = map(list(string))
+}
+
+3.3 batch/outputs.tf
+
+从子模块中导出结果：
+
+output "compute_outputs" {
+  value = module.compute
+}
+
+output "queue_outputs" {
+  value = module.queue
+}
+
+4. 调用示例
+
+4.1 调用融合模块
+
+如果一个项目需要创建 Queue 和 Compute Environment，可以直接调用融合模块：
+
+module "batch" {
+  source = "./modules/batch"
+
+  queue_env_map = {
+    "queue1" = ["env1", "env2"]
+    "queue2" = ["env3"]
+  }
+}
+
+4.2 调用原有模块
+
+如果某个项目只需要创建 Compute Environment 或 Queue，可以继续调用原有模块，路径保持不变：
+
+调用 BatchCompute：
+
+module "batch_compute" {
+  source = "./modules/batch-compute"
+
+  compute_env_map = {
+    "env1" = ["subnet-12345"]
+    "env2" = ["subnet-67890"]
+  }
+}
+
+调用 BatchQueue：
+
+module "batch_queue" {
+  source = "./modules/batch-queue"
+
+  queue_env_map = {
+    "queue1" = ["env1", "env2"]
+    "queue2" = ["env3"]
+  }
+}
+
+5. 总结
+
+	•	保持原有模块不变：BatchCompute 和 BatchQueue 继续作为独立模块存在，引用路径保持不变，确保向后兼容。
+	•	新增融合模块：新增的 Batch 模块只是一种整合逻辑，不会影响原有模块的独立性。
+	•	灵活性：可以根据需求选择调用融合模块或单独调用子模块。
+
+这种设计兼顾了向后兼容性和扩展性，是一种非常好的实践。如果还有其他问题，欢迎随时沟通！
