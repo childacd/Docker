@@ -1,0 +1,200 @@
+你的目标是将当前 Terraform 模块的设计从 多 Queue 对一个 Compute Environment 的支持扩展为 支持每个 Queue 可以对应多个 Compute Environment，从而实现更多的灵活性（如一对多、多对一的关系）。
+
+修改方案
+
+1. 变量设计
+
+当前变量设计：
+
+你现在的变量 var.queue_priority 是一个 Map，定义了 Queue 的优先级（queue_name => priority），并且所有 Queue 默认绑定到一个全局变量 var.compute_environments，表示唯一的 Compute Environment。
+
+修改后的变量设计：
+
+增加一个新的变量来支持 每个 Queue 对应多个 Compute Environment，可以将 queue_priority 与 Compute Environment 的映射绑定在一起，改为 复杂对象的列表。
+
+variable "queue_config" {
+  description = "Configuration for Queues and their associated Compute Environments"
+  type = list(object({
+    queue_name           = string             # Queue 名称
+    priority             = number             # Queue 优先级
+    compute_environments = list(string)       # Queue 对应的 Compute Environment 列表
+  }))
+}
+
+示例值：
+
+queue_config = [
+  {
+    queue_name           = "queue1"
+    priority             = 1
+    compute_environments = ["env1"]
+  },
+  {
+    queue_name           = "queue2"
+    priority             = 2
+    compute_environments = ["env1", "env2"]
+  },
+  {
+    queue_name           = "queue3"
+    priority             = 3
+    compute_environments = ["env3"]
+  }
+]
+
+2. 修改 Terraform Resource Block
+
+当前代码逻辑：
+
+你的 for_each 直接基于 queue_priority 的 Map 结构，这种逻辑无法支持 Queue 与 Compute Environment 的一对多映射。
+
+修改后的代码逻辑：
+
+修改 for_each 基于新的 queue_config 列表，每个 aws_batch_job_queue Resource 动态创建对应的 Compute Environment 绑定。
+
+resource "aws_batch_job_queue" "prism_queue" {
+  for_each = { for q in var.queue_config : q.queue_name => q }
+
+  name     = "PRISM-${each.key}"              # Queue 名称
+  state    = var.queue_state                  # Queue 状态（从变量中引用）
+  priority = each.value.priority              # 从配置中读取优先级
+
+  compute_environment_order {
+    for ce in each.value.compute_environments : {
+      compute_environment = ce
+      order               = index(each.value.compute_environments, ce) + 1
+    }
+  }
+
+  tags = {
+    "Name"                   = "PRISM-${each.key}"
+    "risk_it:costs:tag1"     = "${var.user_costs_tag1}"
+    "risk_it:costs:tag2"     = "${var.user_costs_tag2}"
+    "risk_it:costs:tag3"     = "${var.user_costs_tag3}"
+    "risk_it:costs:tag4"     = "${var.user_costs_tag4}"
+    "risk_it:costs:tag5"     = "${var.user_costs_tag5}"
+    "risk_it:user"           = "${var.user}"
+    "env_name"               = "PRISM-${each.key}"
+  }
+}
+
+3. 修改逻辑说明
+
+	1.	支持多 Compute Environment
+	•	compute_environment_order 通过 for 动态创建多个环境绑定。
+	•	index 确保每个 Compute Environment 的绑定顺序正确。
+	2.	Queue 配置动态化
+	•	for_each 基于新的 queue_config 列表结构，动态解析 queue_name、priority 和 compute_environments。
+	3.	扩展性
+	•	支持任意数量的 Queue 和 Compute Environment，并支持灵活的绑定关系（如一对多、多对一）。
+
+完整代码示例
+
+变量文件（variables.tf）
+
+variable "queue_config" {
+  description = "Configuration for Queues and their associated Compute Environments"
+  type = list(object({
+    queue_name           = string             # Queue 名称
+    priority             = number             # Queue 优先级
+    compute_environments = list(string)       # Queue 对应的 Compute Environment 列表
+  }))
+}
+
+variable "queue_state" {
+  description = "State of the Job Queues (ENABLED or DISABLED)"
+  default     = "ENABLED"
+}
+
+variable "user_costs_tag1" {
+  default = "example_tag1"
+}
+
+variable "user_costs_tag2" {
+  default = "example_tag2"
+}
+
+variable "user_costs_tag3" {
+  default = "example_tag3"
+}
+
+variable "user_costs_tag4" {
+  default = "example_tag4"
+}
+
+variable "user_costs_tag5" {
+  default = "example_tag5"
+}
+
+variable "user" {
+  default = "example_user"
+}
+
+主文件（main.tf）
+
+resource "aws_batch_job_queue" "prism_queue" {
+  for_each = { for q in var.queue_config : q.queue_name => q }
+
+  name     = "PRISM-${each.key}"              # Queue 名称
+  state    = var.queue_state                  # Queue 状态
+  priority = each.value.priority              # 从配置中读取优先级
+
+  compute_environment_order {
+    for ce in each.value.compute_environments : {
+      compute_environment = ce
+      order               = index(each.value.compute_environments, ce) + 1
+    }
+  }
+
+  tags = {
+    "Name"                   = "PRISM-${each.key}"
+    "risk_it:costs:tag1"     = "${var.user_costs_tag1}"
+    "risk_it:costs:tag2"     = "${var.user_costs_tag2}"
+    "risk_it:costs:tag3"     = "${var.user_costs_tag3}"
+    "risk_it:costs:tag4"     = "${var.user_costs_tag4}"
+    "risk_it:costs:tag5"     = "${var.user_costs_tag5}"
+    "risk_it:user"           = "${var.user}"
+    "env_name"               = "PRISM-${each.key}"
+  }
+}
+
+示例值和输出
+
+输入值：
+
+queue_config = [
+  {
+    queue_name           = "queue1"
+    priority             = 1
+    compute_environments = ["env1"]
+  },
+  {
+    queue_name           = "queue2"
+    priority             = 2
+    compute_environments = ["env1", "env2"]
+  },
+  {
+    queue_name           = "queue3"
+    priority             = 3
+    compute_environments = ["env3"]
+  }
+]
+
+输出结果：
+
+	1.	创建 3 个 Queue（queue1, queue2, queue3）。
+	2.	Queue 的 Compute Environment 绑定关系：
+	•	queue1 -> env1
+	•	queue2 -> env1, env2
+	•	queue3 -> env3
+
+总结
+
+	1.	变量设计：
+	•	使用 queue_config 列表，将 Queue 名称、优先级和 Compute Environment 列表绑定在一起。
+	2.	Terraform 资源：
+	•	修改 for_each 和 compute_environment_order，支持动态映射关系。
+	3.	优势：
+	•	支持灵活的一对一、一对多、多对一绑定。
+	•	结构清晰，便于扩展和维护。
+
+如果有更多具体需求，可以进一步优化！
