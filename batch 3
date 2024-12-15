@@ -1,0 +1,118 @@
+你说的需求是 用户只需要提供 Compute Environment 和 Queue 之间的映射关系，系统会自动：
+
+	1.	创建 Map 中涉及的所有 Compute Environments。
+	2.	创建 Map 中涉及的所有 Queues。
+	3.	将 Queues 和 Compute Environments 正确关联。
+
+在我之前的设计中，虽然传入了多种参数，但并未直接实现从一个 Map 关系 自动推导并创建 Compute Environment 和 Queue 的逻辑。这里，我将重新调整设计，让用户只需要传入一个简单的 Map 关系。
+
+变量设计
+
+用户只需要传入一个变量 queue_env_map，这个变量包含 Queue 和 Compute Environment 的对应关系。
+
+variable "queue_env_map" {
+  description = "Mapping of Queues to Compute Environments"
+  type        = map(list(string))
+}
+
+示例值：
+
+queue_env_map = {
+  "queue1" = ["env1", "env2"]
+  "queue2" = ["env2"]
+  "queue3" = ["env3"]
+}
+
+Batch 模块的 main.tf
+
+根据用户传入的 queue_env_map：
+
+	1.	自动提取 Compute Environment 的列表，并创建 Compute Environments。
+	2.	自动创建 Queues 并将它们与对应的 Compute Environment 关联起来。
+
+实现代码：
+
+# 1. 提取 Compute Environment 并去重
+locals {
+  compute_env_list = distinct(flatten([
+    for queue, envs in var.queue_env_map : envs
+  ]))
+}
+
+# 2. 创建 Compute Environments
+module "batch_compute" {
+  source = "../batch-compute"
+
+  create_compute = true
+  compute_env_map = { for env in local.compute_env_list : env => {
+    compute_instance_type       = "m5.large"
+    compute_max_vcpus           = 1000
+    compute_min_vcpus           = 0
+    compute_desired_vcpus       = 10
+    compute_subnets             = ["subnet-12345", "subnet-67890"]
+    compute_allocation_strategy = "BEST_FIT"
+    compute_ec2_ami             = "ami-12345678"
+  }}
+}
+
+# 3. 创建 Queues 并关联 Compute Environments
+module "batch_queue" {
+  source = "../batch-queue"
+
+  create_queue   = true
+  queue_priority = { for queue, envs in var.queue_env_map : queue => 1 } # 每个 Queue 默认优先级为 1
+  compute_environments = {
+    for queue, envs in var.queue_env_map : queue => envs
+  }
+  queue_name = "PRISM"
+}
+
+代码逻辑解析
+
+	1.	提取 Compute Environment
+使用 local.compute_env_list 将 queue_env_map 中的所有 Compute Environment 去重，确保不会重复创建。
+	2.	创建 Compute Environment
+	•	调用 BatchCompute 模块，为提取到的每个 Compute Environment 创建资源。
+	•	你可以在 compute_env_map 中设置默认属性（如 instance_type、vcpus 等）。
+	3.	创建 Queues 并关联 Compute Environment
+	•	遍历 queue_env_map 中的每个 Queue。
+	•	使用 compute_environments 将 Queues 与对应的 Compute Environment 关联。
+	•	默认优先级设置为 1，你也可以根据需要调整。
+
+示例：用户传入的变量
+
+用户调用新模块时，只需要提供简单的 queue_env_map：
+
+module "batch" {
+  source = "./modules/batch"
+
+  queue_env_map = {
+    "queue1" = ["env1", "env2"]
+    "queue2" = ["env2", "env3"]
+    "queue3" = ["env4"]
+  }
+}
+
+最终结果
+
+	1.	Compute Environment 创建：
+	•	env1, env2, env3, env4 将被自动创建。
+	2.	Queue 创建：
+	•	queue1 与 env1 和 env2 关联。
+	•	queue2 与 env2 和 env3 关联。
+	•	queue3 与 env4 关联。
+	3.	完全自动化：
+	•	用户只需提供 queue_env_map，模块会自动提取 Compute Environment 和 Queue，创建资源并关联它们。
+
+优势
+
+	1.	用户输入简单，只需提供一个映射关系。
+	2.	完全自动化，无需手动指定 Compute Environment 或 Queue 的细节。
+	3.	兼容现有模块，不需修改 BatchCompute 和 BatchQueue 模块。
+
+总结
+
+这一设计实现了你提到的需求：
+用户只需提供 Queue 和 Compute Environment 的映射关系，模块会自动创建所有资源及其关联关系。
+
+如有进一步需求或细节调整，请告诉我！
