@@ -1,0 +1,126 @@
+根据你的需求：如果配置完全相同，只是数量和后缀不同，如何优化 BatchCompute 模块的变量定义，减少重复配置？
+
+思路：通过数量和前缀动态生成 Map
+
+我们可以修改 BatchCompute 模块的变量，使其支持以下功能：
+
+	1.	输入：用户只需传入一个前缀和数量（例如 compute_env_prefix = "pringle" 和 compute_env_count = 10）。
+	2.	动态生成：模块内部根据数量生成相应的 key-value 对，每个 key 都是前缀加索引后缀。
+	3.	配置复用：所有 Compute Environment 共享相同的配置（instance_type、vcpus 等）。
+
+1. 修改 BatchCompute 模块的变量定义
+
+在 variables.tf 中修改变量定义：
+
+# Compute Environment 前缀和数量
+variable "compute_env_prefix" {
+  description = "Prefix for Compute Environment names"
+  type        = string
+}
+
+variable "compute_env_count" {
+  description = "Number of Compute Environments to create"
+  type        = number
+}
+
+# Compute Environment 共享配置
+variable "compute_env_config" {
+  description = "Default configuration for Compute Environments"
+  type = object({
+    compute_instance_role        = string
+    compute_instance_type        = string
+    compute_max_vcpus            = number
+    compute_min_vcpus            = number
+    compute_desired_vcpus        = number
+    compute_resource_type        = string
+    compute_allocation_strategy  = string
+    compute_spot_iam_fleet_role  = string
+    compute_subnets              = list(string)
+    compute_security_group_ids   = list(string)
+  })
+}
+
+2. 修改 BatchCompute 模块的 main.tf
+
+通过循环动态生成 Compute Environment Map：
+
+# 动态生成 Compute Environment Map
+locals {
+  compute_env_map = {
+    for i in range(1, var.compute_env_count + 1) :
+    "${var.compute_env_prefix}-${i}" => var.compute_env_config
+  }
+}
+
+# 现有的 Compute Environment 资源
+resource "aws_batch_compute_environment" "prism_compute" {
+  for_each = local.compute_env_map
+
+  compute_environment_name = "PRISM-${each.key}-${random_pet.server.id}"
+  service_role             = var.service_iam_role_name
+  type                     = var.compute_hosting_type
+
+  compute_resources {
+    instance_role         = each.value.compute_instance_role
+    instance_type         = each.value.compute_instance_type
+    max_vcpus             = each.value.compute_max_vcpus
+    min_vcpus             = each.value.compute_min_vcpus
+    desired_vcpus         = each.value.compute_desired_vcpus
+    type                  = each.value.compute_resource_type
+    allocation_strategy   = each.value.compute_allocation_strategy
+    spot_iam_fleet_role   = each.value.compute_spot_iam_fleet_role
+    subnets               = each.value.compute_subnets
+    security_group_ids    = each.value.compute_security_group_ids
+  }
+}
+
+3. 调用 BatchCompute 模块
+
+用户在调用 BatchCompute 模块时，只需提供前缀、数量和共享配置：
+
+module "batch_compute" {
+  source = "./modules/batch-compute"
+
+  compute_env_prefix = "sft_compute_environment_pringle"
+  compute_env_count  = 10
+
+  compute_env_config = {
+    compute_instance_role        = "arn:aws:iam::1234567890:role/ecsInstanceRole"
+    compute_instance_type        = "m5.large"
+    compute_max_vcpus            = 3000
+    compute_min_vcpus            = 0
+    compute_desired_vcpus        = 100
+    compute_resource_type        = "SPOT"
+    compute_allocation_strategy  = "BEST_FIT"
+    compute_spot_iam_fleet_role  = "arn:aws:iam::1234567890:role/spotRole"
+    compute_subnets              = ["subnet-12345", "subnet-67890"]
+    compute_security_group_ids   = ["sg-12345"]
+  }
+}
+
+4. 代码执行效果
+
+生成的 local.compute_env_map：
+
+{
+  "sft_compute_environment_pringle-1" = {...共享配置...}
+  "sft_compute_environment_pringle-2" = {...共享配置...}
+  "sft_compute_environment_pringle-3" = {...共享配置...}
+  ...
+  "sft_compute_environment_pringle-10" = {...共享配置...}
+}
+
+	•	数量：compute_env_count 控制要创建的 Compute Environment 数量。
+	•	前缀：compute_env_prefix 确保名称带有统一的前缀和后缀编号。
+	•	配置复用：compute_env_config 定义所有 Compute Environment 的通用配置，避免重复定义。
+
+5. 优化优势
+
+	1.	代码复用：无需重复定义每个 Compute Environment 的配置。
+	2.	动态生成：根据数量自动创建指定数量的 Compute Environment。
+	3.	易于扩展：只需修改 compute_env_count 和 compute_env_prefix 即可创建不同数量的资源。
+	4.	向后兼容：原有模块的逻辑无需大改，只是新增了动态生成的功能。
+
+总结
+
+通过前缀和数量参数，模块能够自动生成所需的 Compute Environment Map，无需手动重复定义 key-value，既简洁又易维护。如果还有其他需求或细节优化，欢迎随时讨论！
