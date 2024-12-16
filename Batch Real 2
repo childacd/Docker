@@ -1,0 +1,167 @@
+明白了！如果你是通过 Module 而不是直接的 resource 块来创建 Compute Environment 和 Queues，Terraform 依然支持使用 for_each 来循环调用模块。
+
+核心思路：
+
+	1.	for_each 传入模块：
+	•	使用 for_each 动态遍历映射或列表。
+	•	每次循环为模块提供一个独立的输入参数。
+	2.	模块参数动态生成：
+	•	使用 locals 动态生成输入变量，并在模块调用时传递这些值。
+
+示例场景
+
+假设你有两个模块：
+
+	1.	compute_env 模块：创建 Compute Environment。
+	2.	job_queue 模块：创建 Job Queue，并关联多个 Compute Environments。
+
+模块定义
+
+1. modules/compute_env/main.tf
+
+resource "aws_batch_compute_environment" "this" {
+  compute_environment_name = var.name
+  type                     = "MANAGED"
+
+  compute_resources {
+    max_vcpus = var.max_vcpus
+    min_vcpus = var.min_vcpus
+    instance_types = ["optimal"]
+  }
+}
+
+variable "name" {
+  description = "The name of the compute environment"
+  type        = string
+}
+
+variable "max_vcpus" {
+  default = 10
+}
+
+variable "min_vcpus" {
+  default = 1
+}
+
+2. modules/job_queue/main.tf
+
+resource "aws_batch_job_queue" "this" {
+  name     = var.name
+  priority = var.priority
+
+  compute_environments = var.compute_environments
+}
+
+variable "name" {
+  description = "The name of the job queue"
+  type        = string
+}
+
+variable "priority" {
+  default = 1
+}
+
+variable "compute_environments" {
+  description = "List of compute environments to associate"
+  type        = list(string)
+}
+
+主配置文件调用模块
+
+动态生成 Compute Environment 和 Job Queues
+
+variable "batch" {
+  description = "Mapping of queues to compute environments"
+  type = map(map(list(string)))
+  default = {
+    pringle = {
+      "q-1" = ["compute-environment-1"]
+      "q-2" = ["compute-environment-2"]
+      "q-3" = ["compute-environment-3"]
+    }
+    BT = {
+      "q-1" = ["compute-environment-1"]
+      "q-2" = ["compute-environment-2", "compute-environment-3"]
+      "q-3" = ["compute-environment-1"]
+    }
+  }
+}
+
+locals {
+  # 去重生成 Compute Environment 名称
+  compute_envs = distinct(flatten([
+    for batch_name, queues in var.batch : [
+      for env_list in values(queues) : [
+        for env in env_list : "${batch_name}-${env}"
+      ]
+    ]
+  ]))
+
+  # 生成队列与 Compute Environment 的完整映射
+  queues = flatten([
+    for batch_name, queues in var.batch : [
+      for queue_name, env_list in queues : {
+        queue_name       = "${batch_name}-${queue_name}"
+        environment_list = [for env in env_list : "${batch_name}-${env}"]
+      }
+    ]
+  ])
+}
+
+# 调用 Compute Environment 模块
+module "compute_env" {
+  source = "./modules/compute_env"
+  for_each = toset(local.compute_envs)
+
+  name      = each.value
+  max_vcpus = 10
+  min_vcpus = 1
+}
+
+# 调用 Job Queue 模块
+module "job_queue" {
+  source = "./modules/job_queue"
+  for_each = { for q in local.queues : q.queue_name => q }
+
+  name                = each.key
+  compute_environments = [for env in each.value.environment_list :
+    module.compute_env[env].arn
+  ]
+}
+
+代码解释
+
+	1.	模块定义：
+	•	compute_env 模块：用于创建 Compute Environment。
+	•	job_queue 模块：用于创建 Job Queue，并接收一个或多个 Compute Environments 的 ARN。
+	2.	本地变量：
+	•	compute_envs：去重生成所有的 Compute Environment 名称。
+	•	queues：生成队列名称和对应的 Compute Environment 列表。
+	3.	for_each 调用模块：
+	•	module "compute_env"：为去重后的每个 Compute Environment 调用模块。
+	•	module "job_queue"：为每个队列调用模块，并将其关联到对应的 Compute Environments。
+	4.	引用模块输出：
+	•	module.compute_env[env].arn：从 Compute Environment 模块中获取 ARN，用于关联到 Job Queue。
+
+执行结果
+
+假设 batch 数据中 pringle 和 BT 的配置，Terraform 将创建：
+
+	1.	Compute Environments：
+
+pringle-compute-environment-1
+pringle-compute-environment-2
+pringle-compute-environment-3
+BT-compute-environment-1
+BT-compute-environment-2
+BT-compute-environment-3
+
+
+	2.	Job Queues 和关联关系：
+
+pringle-q-1 -> [pringle-compute-environment-1]
+pringle-q-2 -> [pringle-compute-environment-2]
+pringle-q-3 -> [pringle-compute-environment-3]
+BT-q-1      -> [BT-compute-environment-1]
+BT-q-2      -> [BT-compute-environment-2, BT-compute-environment-3]
+BT-q-3     
