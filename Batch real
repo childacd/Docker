@@ -1,0 +1,134 @@
+在实际使用中，当你要通过 resource 或 module 块来真正创建 Compute Environment 和 Queue 等资源时，triggers 主要适用于 null_resource 这种特殊的资源块，而不适用于大多数其他资源块或模块。
+
+为什么 triggers 不适用于一般资源？
+
+	•	triggers 是 null_resource 的特有配置，用来判断资源是否需要被重新创建。
+	•	对于其他资源（如 aws_batch_compute_environment 或 aws_batch_job_queue），Terraform 依赖资源参数的变化来判断是否需要更新或重建，而不会使用 triggers。
+
+实际使用中的替代方法
+
+当你使用 resource 块或 module 块时，可以通过以下方法来实现类似的动态逻辑，而不依赖 triggers：
+
+	1.	动态名称生成：
+	•	使用变量和 for_each/count 来动态生成资源名称。
+	•	名称逻辑放在 locals 或动态输入参数中。
+	2.	依赖关系显式指定：
+	•	使用 depends_on 来明确资源之间的依赖关系。
+	•	这样可以确保先创建 Compute Environment，再创建关联的 Queue。
+	3.	映射和循环创建资源：
+	•	使用 for_each 遍历映射数据，动态创建资源。
+
+示例：实际创建 Compute Environment 和 Queue
+
+假设你最终要创建实际的 Compute Environment 和 Job Queues，名称动态带有前缀，并保持正确的映射关系。
+
+配置代码
+
+variable "batch" {
+  description = "Mapping of queues to compute environments"
+  type = map(map(list(string)))
+  default = {
+    pringle = {
+      "q-1" = ["compute-environment-1"]
+      "q-2" = ["compute-environment-2"]
+      "q-3" = ["compute-environment-3"]
+    }
+    BT = {
+      "q-1" = ["compute-environment-1"]
+      "q-2" = ["compute-environment-2", "compute-environment-3"]
+      "q-3" = ["compute-environment-1"]
+    }
+  }
+}
+
+locals {
+  # 生成队列与 Compute Environment 的映射
+  queues = flatten([
+    for batch_name, queues in var.batch : [
+      for queue_name, env_list in queues : {
+        queue_name       = "${batch_name}-${queue_name}"
+        environment_list = [for env in env_list : "${batch_name}-${env}"]
+      }
+    ]
+  ])
+
+  # 去重的 Compute Environment 列表
+  compute_envs = distinct(flatten([
+    for batch_name, queues in var.batch : [
+      for env_list in values(queues) : [
+        for env in env_list : "${batch_name}-${env}"
+      ]
+    ]
+  ]))
+}
+
+# 创建 Compute Environments
+resource "aws_batch_compute_environment" "compute_envs" {
+  for_each = toset(local.compute_envs)
+
+  compute_environment_name = each.value
+  type                     = "MANAGED"
+
+  compute_resources {
+    max_vcpus = 10
+    min_vcpus = 1
+    instance_types = ["optimal"]
+  }
+}
+
+# 创建 Queues 并关联多个 Compute Environments
+resource "aws_batch_job_queue" "queues" {
+  for_each = { for q in local.queues : q.queue_name => q }
+
+  name     = each.key
+  priority = 1
+
+  compute_environments = [
+    for env in each.value.environment_list :
+    aws_batch_compute_environment.compute_envs[env].arn
+  ]
+}
+
+代码逻辑
+
+	1.	Compute Environment：
+	•	动态生成带前缀的名称（如 pringle-compute-environment-1）。
+	•	使用 for_each 创建去重的 Compute Environments。
+	2.	Job Queues：
+	•	队列名称动态生成（如 pringle-q-1）。
+	•	每个队列可以关联多个 Compute Environments。
+	3.	动态映射：
+	•	通过 for 表达式遍历 batch 数据，生成队列与环境的映射关系。
+
+执行结果
+
+当你运行 terraform apply 时，将会创建：
+
+	1.	带有前缀的 Compute Environments：
+
+pringle-compute-environment-1
+pringle-compute-environment-2
+pringle-compute-environment-3
+BT-compute-environment-1
+BT-compute-environment-2
+BT-compute-environment-3
+
+
+	2.	队列与对应 Compute Environments 的映射：
+
+pringle-q-1 -> pringle-compute-environment-1
+pringle-q-2 -> pringle-compute-environment-2
+pringle-q-3 -> pringle-compute-environment-3
+BT-q-1      -> BT-compute-environment-1
+BT-q-2      -> BT-compute-environment-2, BT-compute-environment-3
+BT-q-3      -> BT-compute-environment-1
+
+
+
+总结
+
+	1.	triggers 仅适用于 null_resource，不适用于实际资源块或模块。
+	2.	实际资源的动态创建和映射，可以使用 locals 和 for_each，结合输入变量生成动态名称和关系。
+	3.	上述代码完全符合你的需求，能够处理 一个队列对应多个 Compute Environment 的场景。
+
+如果还有进一步疑问，欢迎随时提问！
