@@ -1,0 +1,142 @@
+你提到了一个队列（Q）可以对应多个 Compute Environment，这个需求在你的 batch 数据中已经体现，例如：
+
+BT = {
+  "q-2" = ["compute-environment-2", "compute-environment-2"]
+}
+
+在这种情况下，队列名称依然需要正确生成，但其对应的多个 Compute Environment 也要全部关联。这就要求我们调整逻辑，确保：
+
+	1.	队列名称前缀 和 所有 Compute Environment 名称 正确生成。
+	2.	每个队列可以映射到多个 Compute Environment。
+
+更新后的 Terraform 配置
+
+以下代码可以满足你的需求，即：
+
+	•	每个队列可以对应多个 Compute Environment。
+	•	Compute Environment 名称和队列名称均带上前缀（如 pringle-q-1 和 pringle-compute-environment-1）。
+	•	所有关系清晰输出以供 Debug。
+
+输入变量
+
+variable "batch" {
+  description = "Mapping of queues to compute environments"
+  type = map(map(list(string)))
+  default = {
+    pringle = {
+      "q-1" = ["compute-environment-1"]
+      "q-2" = ["compute-environment-2"]
+      "q-3" = ["compute-environment-3"]
+    }
+    BT = {
+      "q-1" = ["compute-environment-1"]
+      "q-2" = ["compute-environment-2", "compute-environment-3"]
+      "q-3" = ["compute-environment-1"]
+    }
+  }
+}
+
+本地变量逻辑
+
+处理逻辑更新如下：
+
+	1.	生成去重的 Compute Environment 名称，带前缀。
+	2.	为每个队列生成完整的映射，包括多个 Compute Environment。
+
+locals {
+  # 1. 生成所有 Compute Environment，去重，并带上前缀
+  compute_envs = distinct(flatten([
+    for batch_name, queues in var.batch : [
+      for env_list in values(queues) : [
+        for env in env_list : "${batch_name}-${env}"
+      ]
+    ]
+  ]))
+
+  # 2. 生成队列与其所有 Compute Environment 的完整映射
+  queues = flatten([
+    for batch_name, queues in var.batch : [
+      for queue_name, env_list in queues : {
+        queue_name       = "${batch_name}-${queue_name}"
+        environment_list = [for env in env_list : "${batch_name}-${env}"]
+      }
+    ]
+  ])
+}
+
+Dummy 资源
+
+通过 null_resource 模拟队列和 Compute Environment 的创建。
+
+# Dummy 资源：模拟创建所有 Compute Environments
+resource "null_resource" "dummy_compute_envs" {
+  for_each = toset(local.compute_envs)
+
+  triggers = {
+    name = each.value
+  }
+}
+
+# Dummy 资源：模拟创建所有队列，并关联多个 Compute Environments
+resource "null_resource" "dummy_queues" {
+  for_each = { for q in local.queues : q.queue_name => q }
+
+  triggers = {
+    name                = each.value.queue_name
+    associated_env_list = join(",", each.value.environment_list)
+  }
+}
+
+输出结果
+
+输出最终的 Compute Environment 名称 和 队列到多个 Compute Environment 的映射。
+
+output "debug_compute_envs" {
+  description = "带前缀的 Compute Environment 名称"
+  value = { for k, v in null_resource.dummy_compute_envs : k => v.triggers.name }
+}
+
+output "debug_queues" {
+  description = "队列与其关联的多个 Compute Environment"
+  value = { for k, v in null_resource.dummy_queues : k => v.triggers.associated_env_list }
+}
+
+执行结果
+
+运行 terraform apply 后，输出类似以下结果：
+
+Compute Environment 名称
+
+debug_compute_envs = {
+  "BT-compute-environment-1"      = "BT-compute-environment-1"
+  "BT-compute-environment-2"      = "BT-compute-environment-2"
+  "BT-compute-environment-3"      = "BT-compute-environment-3"
+  "pringle-compute-environment-1" = "pringle-compute-environment-1"
+  "pringle-compute-environment-2" = "pringle-compute-environment-2"
+  "pringle-compute-environment-3" = "pringle-compute-environment-3"
+}
+
+队列与多个 Compute Environment 的映射
+
+debug_queues = {
+  "BT-q-1"       = "BT-compute-environment-1"
+  "BT-q-2"       = "BT-compute-environment-2,BT-compute-environment-3"
+  "BT-q-3"       = "BT-compute-environment-1"
+  "pringle-q-1"  = "pringle-compute-environment-1"
+  "pringle-q-2"  = "pringle-compute-environment-2"
+  "pringle-q-3"  = "pringle-compute-environment-3"
+}
+
+逻辑总结
+
+	1.	Compute Environment 名称 带上前缀 batch-key（如 pringle、BT）。
+	2.	每个队列对应一个或多个 Compute Environment，并正确显示关联。
+	3.	使用 null_resource 和 triggers 模拟资源，仅用于 Debug 输出。
+
+这个代码完全符合你的描述：
+
+	•	名称前缀正确。
+	•	队列支持多个 Compute Environment。
+	•	映射关系清晰展示。
+
+如有进一步需求，随时告诉我！
