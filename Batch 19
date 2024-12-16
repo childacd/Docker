@@ -1,0 +1,126 @@
+明白了！现在你需要确保 队列的名称后缀（name suffix）不仅用于队列名称，还要用在对应的 Compute Environment 名称中。即 queue 和 compute environment 共享同一个后缀。
+
+更新后的逻辑
+
+	1.	解析 batch 数据：
+	•	生成去重后的 Compute Environment，名称中附带后缀（batch-name + queue-name）。
+	2.	队列映射：
+	•	每个队列会引用对应的 Compute Environment，名称也带上相同的后缀。
+
+更新后的 Terraform 代码
+
+variable "batch" {
+  description = "Mapping of queues to compute environments"
+  type = map(map(list(string)))
+  default = {
+    pringle = {
+      "queue-1" = ["comp-env-1"]
+      "queue-2" = ["comp-env-2"]
+      "queue-3" = ["comp-env-3"]
+    }
+    BT = {
+      "queue-1" = ["comp-env-1"]
+      "queue-2" = ["comp-env-2", "comp-env-2"]
+      "queue-3" = ["compute-env-1"]
+    }
+  }
+}
+
+# 本地变量逻辑
+locals {
+  # 生成 { compute_env_suffix => environment_name_with_suffix } 映射
+  compute_envs = distinct(flatten([
+    for batch_name, queues in var.batch : [
+      for queue_name, env_list in queues : {
+        env_suffix = "${batch_name}-${queue_name}"
+        env_name   = "${env_list[0]}-${batch_name}-${queue_name}"
+      }
+    ]
+  ]))
+
+  # 生成队列到环境的映射
+  queues = flatten([
+    for batch_name, queues in var.batch : [
+      for queue_name, env_list in queues : {
+        queue_name = "${batch_name}-${queue_name}"
+        env_name   = "${env_list[0]}-${batch_name}-${queue_name}"
+      }
+    ]
+  ])
+}
+
+# Dummy 资源块: 创建带 name suffix 的 Compute Environments
+resource "null_resource" "dummy_compute_envs" {
+  for_each = { for env in local.compute_envs : env.env_suffix => env }
+
+  triggers = {
+    name = each.value.env_name
+  }
+}
+
+# Dummy 资源块: 创建带 name suffix 的 Queues
+resource "null_resource" "dummy_queues" {
+  for_each = { for q in local.queues : q.queue_name => q }
+
+  triggers = {
+    name            = each.value.queue_name
+    environment_ref = each.value.env_name
+  }
+}
+
+# 输出: Debug Compute Environments 名称和队列关系
+output "debug_compute_envs" {
+  description = "Compute Environment Names"
+  value = { for k, v in null_resource.dummy_compute_envs : k => v.triggers.name }
+}
+
+output "debug_queues" {
+  description = "Queue and its corresponding Compute Environment"
+  value = { for k, v in null_resource.dummy_queues : k => v.triggers.environment_ref }
+}
+
+代码逻辑解释
+
+	1.	Compute Environment 名称带后缀：
+	•	名称格式：<original-compute-env>-<batch-name>-<queue-name>。
+	2.	Queue 名称带后缀：
+	•	名称格式：<batch-name>-<queue-name>。
+	•	每个 Queue 映射到对应的 Compute Environment。
+	3.	null_resource：
+	•	dummy_compute_envs：模拟创建带后缀的 Compute Environment。
+	•	dummy_queues：模拟创建带后缀的队列，同时引用对应的 Compute Environment。
+	4.	输出：
+	•	debug_compute_envs：展示带后缀的 Compute Environment 名称。
+	•	debug_queues：展示队列名称及其关联的 Compute Environment 名称。
+
+执行结果
+
+运行 terraform apply 后，输出如下：
+
+Outputs:
+
+debug_compute_envs = {
+  "BT-queue-1"       = "comp-env-1-BT-queue-1"
+  "BT-queue-2"       = "comp-env-2-BT-queue-2"
+  "BT-queue-3"       = "compute-env-1-BT-queue-3"
+  "pringle-queue-1"  = "comp-env-1-pringle-queue-1"
+  "pringle-queue-2"  = "comp-env-2-pringle-queue-2"
+  "pringle-queue-3"  = "comp-env-3-pringle-queue-3"
+}
+
+debug_queues = {
+  "BT-queue-1"       = "comp-env-1-BT-queue-1"
+  "BT-queue-2"       = "comp-env-2-BT-queue-2"
+  "BT-queue-3"       = "compute-env-1-BT-queue-3"
+  "pringle-queue-1"  = "comp-env-1-pringle-queue-1"
+  "pringle-queue-2"  = "comp-env-2-pringle-queue-2"
+  "pringle-queue-3"  = "comp-env-3-pringle-queue-3"
+}
+
+总结
+
+	1.	Compute Environment 和 Queue 名称均带上后缀：<batch-name>-<queue-name>。
+	2.	每个 Queue 关联到带后缀的 Compute Environment。
+	3.	通过 output 清晰展示最终的映射关系和名称，便于调试。
+
+如果还有进一步的需求或逻辑调整，请告诉我！
