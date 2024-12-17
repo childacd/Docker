@@ -1,0 +1,98 @@
+明白你的需求了！你希望通过 locals 动态生成一个 map，以传入 module，而不需要手动写 10 个重复的子 map。所有这些子 map 的参数内容基本一致，唯一不同的是名字。
+
+解决方案：动态生成 Map
+
+你可以通过 for 循环 在 locals 中生成一个符合模块输入格式的动态 map。以下是具体代码示例：
+
+代码示例
+
+variable "environment_count" {
+  description = "Number of compute environments to create"
+  type        = number
+  default     = 10
+}
+
+locals {
+  # 动态生成的 Compute Environment Map
+  compute_environments = {
+    for i in range(1, var.environment_count + 1) : 
+    "generated-compute-environment-${i}" => {
+      compute_instance_role       = "arn:aws:iam::123456789012:role/instance-role"
+      compute_max_vcpus           = 3000
+      compute_min_vcpus           = 0
+      compute_desired_vcpus       = 0
+      compute_resource_type       = "SPOT"
+      compute_allocation_strategy = "SPOT_CAPACITY_OPTIMIZED"
+      compute_spot_iam_fleet_role = "arn:aws:iam::123456789012:role/spot-role"
+      compute_subnets             = ["subnet-12345"]
+      compute_instance_type       = ["m5.large"]
+      compute_security_group_ids  = ["sg-123456"]
+    }
+  }
+}
+
+# 调用 Module，动态传入生成的 Map
+module "prism_compute" {
+  source             = "./modules/prism_compute"
+  compute_environment = local.compute_environments
+}
+
+代码逻辑说明
+
+	1.	variable "environment_count"：
+	•	用户可以通过这个变量定义要创建的 Compute Environment 的数量，比如 10 个。
+	2.	locals 块：
+	•	使用 for 循环 和 range() 函数，动态生成指定数量的 map。
+	•	其中每个 key 是 "generated-compute-environment-<序号>"，例如 generated-compute-environment-1、generated-compute-environment-2。
+	3.	参数内容复用：
+	•	每个子 map 的参数内容都是相同的，只有 名字不同。
+	4.	模块调用：
+	•	将动态生成的 local.compute_environments 传入模块。
+
+生成的 Map 示例
+
+假设 var.environment_count = 2，生成的 local.compute_environments 如下：
+
+{
+  "generated-compute-environment-1" = {
+    compute_instance_role       = "arn:aws:iam::123456789012:role/instance-role"
+    compute_max_vcpus           = 3000
+    compute_min_vcpus           = 0
+    compute_desired_vcpus       = 0
+    compute_resource_type       = "SPOT"
+    compute_allocation_strategy = "SPOT_CAPACITY_OPTIMIZED"
+    compute_spot_iam_fleet_role = "arn:aws:iam::123456789012:role/spot-role"
+    compute_subnets             = ["subnet-12345"]
+    compute_instance_type       = ["m5.large"]
+    compute_security_group_ids  = ["sg-123456"]
+  },
+  "generated-compute-environment-2" = {
+    compute_instance_role       = "arn:aws:iam::123456789012:role/instance-role"
+    compute_max_vcpus           = 3000
+    compute_min_vcpus           = 0
+    compute_desired_vcpus       = 0
+    compute_resource_type       = "SPOT"
+    compute_allocation_strategy = "SPOT_CAPACITY_OPTIMIZED"
+    compute_spot_iam_fleet_role = "arn:aws:iam::123456789012:role/spot-role"
+    compute_subnets             = ["subnet-12345"]
+    compute_instance_type       = ["m5.large"]
+    compute_security_group_ids  = ["sg-123456"]
+  }
+}
+
+运行效果
+
+	1.	传入模块的 Map：
+compute_environment 动态生成，包含 10 个（或指定数量）环境的配置信息。
+	2.	模块内的 for_each：
+模块中通过 for_each 遍历 Map，生成对应数量的 Compute Environment 资源。
+
+优势
+
+	1.	无需手动编写重复的代码：只需通过 environment_count 控制数量即可。
+	2.	灵活扩展：轻松增加或减少 Compute Environment 的数量。
+	3.	参数一致性：复用相同的参数配置，避免手动修改多个地方。
+
+如果有其他特殊需求（例如不同的参数配置），可以进一步优化 locals，通过条件判断动态生成不同的内容。
+
+如有疑问或需要进一步修改，随时告诉我！
