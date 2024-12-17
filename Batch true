@@ -1,0 +1,117 @@
+从你的 Terraform 输出可以看到，debug_pringle_compenv 的结构中：
+
+	•	prism_compute_env_arn 是一个 列表，包含了所有 Compute Environment 的 ARN。
+	•	prism_compute_env_id 是另一个 列表，包含了对应的 Compute Environment 名称（ID）。
+
+你需要 根据 ID 找到对应的 ARN，将其正确映射到队列（Queue）。
+
+解决方案
+
+使用 index() 函数来查找 ID 在列表中的位置，然后从 ARN 列表中获取对应的值。
+
+完整代码示例
+
+1. 主配置文件
+
+locals {
+  # 生成队列与 Compute Environment ARN 的映射
+  queues = flatten([
+    for batch_name, queues in var.batch : [
+      for queue_name, env_list in queues : {
+        queue_name       = "${batch_name}-${queue_name}"
+        environment_arns = [
+          for env in env_list : module.aws_pringle_compenv.prism_compute_env_arn[
+            index(module.aws_pringle_compenv.prism_compute_env_id, "PRISM-${batch_name}-${env}")
+          ]
+        ]
+      }
+    ]
+  ])
+}
+
+# 调用 Job Queue 模块
+module "job_queue" {
+  source = "./modules/job_queue"
+
+  for_each = { for q in local.queues : q.queue_name => q }
+
+  name                 = each.value.queue_name
+  compute_environments = each.value.environment_arns
+}
+
+# 输出队列与 Compute Environment ARN 的映射
+output "queue_mappings" {
+  value = {
+    for q in local.queues : q.queue_name => q.environment_arns
+  }
+}
+
+关键点解析
+
+	1.	index() 函数：
+	•	在 prism_compute_env_id 列表中查找 ID（如 PRISM-pringle-comp-env-1）。
+	•	返回该 ID 在列表中的索引。
+	2.	映射 ARN：
+	•	使用 index() 返回的索引，从 prism_compute_env_arn 列表中提取对应的 ARN。
+	3.	队列映射：
+	•	生成每个队列的名称和关联的 Compute Environment ARN 列表。
+
+输入变量示例
+
+variable "batch" {
+  description = "Mapping of queues to compute environments"
+  type = map(map(list(string)))
+  default = {
+    pringle = {
+      "q-1" = ["comp-env-1"]
+      "q-2" = ["comp-env-2"]
+    }
+    BT = {
+      "q-1" = ["comp-env-1"]
+      "q-2" = ["comp-env-2", "comp-env-3"]
+    }
+  }
+}
+
+输出结果
+
+假设你的模块输出如下：
+
+	•	prism_compute_env_id：
+
+[
+  "PRISM-BT-comp-env-1",
+  "PRISM-BT-comp-env-2",
+  "PRISM-pringle-comp-env-1"
+]
+
+
+	•	prism_compute_env_arn：
+
+[
+  "arn:aws:batch:eu-west-1:722507666:compute-environment/BT-comp-env-1",
+  "arn:aws:batch:eu-west-1:722507666:compute-environment/BT-comp-env-2",
+  "arn:aws:batch:eu-west-1:722507666:compute-environment/pringle-comp-env-1"
+]
+
+
+
+最终输出的 queue_mappings：
+
+queue_mappings = {
+  "pringle-q-1" = ["arn:aws:batch:eu-west-1:722507666:compute-environment/pringle-comp-env-1"]
+  "pringle-q-2" = ["arn:aws:batch:eu-west-1:722507666:compute-environment/BT-comp-env-2"]
+  "BT-q-1"      = ["arn:aws:batch:eu-west-1:722507666:compute-environment/BT-comp-env-1"]
+  "BT-q-2"      = [
+    "arn:aws:batch:eu-west-1:722507666:compute-environment/BT-comp-env-2",
+    "arn:aws:batch:eu-west-1:722507666:compute-environment/BT-comp-env-3"
+  ]
+}
+
+总结
+
+	1.	通过 index() 查找 ID 的位置，然后从 ARN 列表中获取对应的 ARN。
+	2.	动态生成队列与 Compute Environment ARN 的映射，无需手动硬编码。
+	3.	灵活扩展：支持队列对应多个 Compute Environments。
+
+如果还有进一步的需求或问题，请告诉我！
