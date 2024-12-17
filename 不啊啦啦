@@ -1,0 +1,21 @@
+locals {
+  # 生成 Compute Environment 配置，带 batch_name 前缀
+  compute_envs = {
+    for batch_name, queues in var.batch : merge({
+      for queue_name, env_list in queues : {
+        for env in env_list : "${batch_name}-${env}" => {
+          compute_instance_role       = "arn:aws:iam::123456789012:role/instance-role"
+          compute_max_vcpus           = 3000
+          compute_min_vcpus           = 0
+          compute_desired_vcpus       = 0
+          compute_resource_type       = "SPOT"
+          compute_allocation_strategy = "SPOT_PRICE"
+          compute_spot_iam_fleet_role = "arn:aws:iam::123456789012:role/spot-role"
+          compute_subnets             = []
+          compute_instance_type       = ["m5.16xlarge"]
+          compute_security_group_ids  = ["sg-088adf"]
+        }
+      }
+    }...)
+  }
+}
