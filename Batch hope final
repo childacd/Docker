@@ -1,0 +1,204 @@
+如果你希望通过模块直接访问资源的属性（如 arn），不依赖模块输出，那么整体的 Terraform 代码结构可以按照以下方式来组织。
+
+完整示例代码
+
+1. Compute Environment 模块
+
+假设你有一个模块 pringle_compenv 用来创建 Compute Environment，代码如下：
+
+modules/pringle_compenv/main.tf
+
+resource "aws_batch_compute_environment" "prism_compute" {
+  for_each = var.compute_environment
+
+  compute_environment_name = each.key
+  service_role             = var.service_role
+  type                     = var.compute_type
+
+  compute_resources {
+    instance_role       = each.value.instance_role
+    max_vcpus           = each.value.max_vcpus
+    min_vcpus           = each.value.min_vcpus
+    instance_type       = each.value.instance_type
+    security_group_ids  = each.value.security_group_ids
+  }
+}
+
+variable "compute_environment" {
+  description = "A map of compute environments to create"
+  type        = map(object({
+    instance_role       = string
+    max_vcpus           = number
+    min_vcpus           = number
+    instance_type       = list(string)
+    security_group_ids  = list(string)
+  }))
+}
+
+variable "service_role" {
+  description = "Service role for compute environments"
+  type        = string
+}
+
+variable "compute_type" {
+  description = "Type of compute environment"
+  type        = string
+}
+
+2. 主配置文件
+
+在主配置文件中，动态调用模块并直接引用模块中创建的 Compute Environment 资源的 arn：
+
+main.tf
+
+# 定义输入变量
+variable "batch" {
+  description = "Mapping of queues to compute environments"
+  type = map(map(list(string)))
+  default = {
+    pringle = {
+      "q-1" = ["comp-env-1"]
+      "q-2" = ["comp-env-2"]
+    }
+    BT = {
+      "q-1" = ["comp-env-1"]
+      "q-2" = ["comp-env-2", "comp-env-3"]
+    }
+  }
+}
+
+locals {
+  # 动态生成 Compute Environment 输入
+  compute_envs = {
+    for env in flatten([
+      for batch_name, queues in var.batch : [
+        for env_list in values(queues) : [
+          for env in env_list : "${batch_name}-${env}"
+        ]
+      ]
+    ]) : env => {
+      instance_role       = "arn:aws:iam::123456789012:role/instance-role"
+      max_vcpus           = 3000
+      min_vcpus           = 0
+      instance_type       = ["m5.large"]
+      security_group_ids  = ["sg-123456"]
+    }
+  }
+}
+
+# 调用 Compute Environment 模块
+module "pringle_compenv" {
+  source               = "./modules/pringle_compenv"
+  compute_environment  = local.compute_envs
+  service_role         = "arn:aws:iam::123456789012:role/service-role"
+  compute_type         = "MANAGED"
+}
+
+# 生成队列与 Compute Environment 的映射
+locals {
+  queues = flatten([
+    for batch_name, queues in var.batch : [
+      for queue_name, env_list in queues : {
+        queue_name       = "${batch_name}-${queue_name}"
+        environment_arns = [
+          for env in env_list : module.pringle_compenv.aws_batch_compute_environment["${batch_name}-${env}"].arn
+        ]
+      }
+    ]
+  ])
+}
+
+# 调用 Job Queue 模块
+module "job_queue" {
+  source = "./modules/job_queue"
+
+  for_each = { for q in local.queues : q.queue_name => q }
+
+  name                 = each.value.queue_name
+  compute_environments = each.value.environment_arns
+}
+
+# 输出队列与 Compute Environment ARN 的映射
+output "queue_mappings" {
+  value = {
+    for k, v in module.job_queue : k => v.compute_environments
+  }
+}
+
+3. Job Queue 模块
+
+假设你的 job_queue 模块用于创建 Job Queue，代码如下：
+
+modules/job_queue/main.tf
+
+resource "aws_batch_job_queue" "this" {
+  name                 = var.name
+  priority             = var.priority
+  compute_environments = var.compute_environments
+}
+
+variable "name" {
+  description = "Queue name"
+  type        = string
+}
+
+variable "priority" {
+  description = "Queue priority"
+  default     = 1
+}
+
+variable "compute_environments" {
+  description = "List of Compute Environment ARNs"
+  type        = list(string)
+}
+
+代码逻辑解释
+
+	1.	Compute Environment 模块：
+	•	使用 for_each 创建多个 Compute Environment，key 为带前缀的名称（如 pringle-comp-env-1）。
+	•	资源 aws_batch_compute_environment 的 arn 可以通过 module.pringle_compenv.aws_batch_compute_environment[key].arn 直接引用。
+	2.	动态生成队列与 ARN 映射：
+	•	遍历 batch 输入，生成队列名称和对应的 Compute Environment ARN 列表。
+	•	直接从模块引用 aws_batch_compute_environment 的 arn。
+	3.	Job Queue 模块：
+	•	使用 for_each 动态创建 Job Queue。
+	•	compute_environments 关联到正确的 ARN 列表。
+	4.	输出：
+	•	输出每个队列名称及其关联的 Compute Environment ARNs。
+
+执行结果
+
+假设输入 batch 为：
+
+batch = {
+  pringle = {
+    "q-1" = ["comp-env-1"]
+    "q-2" = ["comp-env-2"]
+  }
+  BT = {
+    "q-1" = ["comp-env-1"]
+    "q-2" = ["comp-env-2", "comp-env-3"]
+  }
+}
+
+最终输出
+
+运行 terraform apply，结果类似：
+
+queue_mappings = {
+  "pringle-q-1" = ["arn:aws:batch:region:account:compute-environment/pringle-comp-env-1"]
+  "pringle-q-2" = ["arn:aws:batch:region:account:compute-environment/pringle-comp-env-2"]
+  "BT-q-1"      = ["arn:aws:batch:region:account:compute-environment/BT-comp-env-1"]
+  "BT-q-2"      = [
+    "arn:aws:batch:region:account:compute-environment/BT-comp-env-2",
+    "arn:aws:batch:region:account:compute-environment/BT-comp-env-3"
+  ]
+}
+
+总结
+
+	1.	模块内直接访问资源属性：通过 module.<module_name>.<resource_name>[key].attribute。
+	2.	动态创建与映射：通过 locals 和 for_each 动态生成资源和映射关系。
+	3.	无需输出变量：直接引用模块内资源属性（如 arn）。
+
+如果有其他需求或疑问，欢迎进一步讨论！
