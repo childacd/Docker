@@ -1,0 +1,15 @@
+locals {
+  queues = flatten([
+    for batch_name, queues in var.batch : [
+      for queue_name, env_list in queues : {
+        queue_name       = "${batch_name}-${queue_name}"
+        environment_arns = [
+          for env in env_list : 
+          local.compute_env_map[id]
+          for id in keys(local.compute_env_map)
+          if can(regex(".*${batch_name}-${env}.*", id))
+        ]
+      }
+    ]
+  ])
+}
