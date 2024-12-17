@@ -1,0 +1,111 @@
+要根据你提供的 batch 变量动态生成符合 module 输入格式的 map，我们需要遍历 batch 的结构，将它转换为适合 compute environment 模块的输入格式。
+
+目标
+
+从 batch 中：
+
+	1.	提取所有去重的 Compute Environment 名称（带前缀，比如 pringle-compute-environment-1）。
+	2.	将这些名称动态生成对应的子 map，内容与之前保持一致（参数一致）。
+
+实现代码
+
+variable "batch" {
+  description = "Mapping of queues to compute environments"
+  type = map(map(list(string)))
+  default = {
+    pringle = {
+      "q-1" = ["compute-environment-1"]
+      "q-2" = ["compute-environment-2"]
+      "q-3" = ["compute-environment-3"]
+    }
+    BT = {
+      "q-1" = ["compute-environment-1"]
+      "q-2" = ["compute-environment-2", "compute-environment-3"]
+      "q-3" = ["compute-environment-1"]
+    }
+  }
+}
+
+locals {
+  # 1. 从 batch 提取去重的 compute environment 名称，并加上前缀
+  compute_environment_names = distinct(flatten([
+    for batch_name, queues in var.batch : [
+      for env_list in values(queues) : [
+        for env in env_list : "${batch_name}-${env}"
+      ]
+    ]
+  ]))
+
+  # 2. 动态生成符合 module 输入格式的 map
+  compute_environments = {
+    for name in local.compute_environment_names : name => {
+      compute_instance_role       = "arn:aws:iam::123456789012:role/instance-role"
+      compute_max_vcpus           = 3000
+      compute_min_vcpus           = 0
+      compute_desired_vcpus       = 0
+      compute_resource_type       = "SPOT"
+      compute_allocation_strategy = "SPOT_CAPACITY_OPTIMIZED"
+      compute_spot_iam_fleet_role = "arn:aws:iam::123456789012:role/spot-role"
+      compute_subnets             = ["subnet-12345"]
+      compute_instance_type       = ["m5.large"]
+      compute_security_group_ids  = ["sg-123456"]
+    }
+  }
+}
+
+# 调用 Module，将生成的 map 传递进去
+module "prism_compute" {
+  source              = "./modules/prism_compute"
+  compute_environment = local.compute_environments
+}
+
+# 输出调试
+output "generated_compute_environments" {
+  value = local.compute_environments
+}
+
+代码逻辑解释
+
+	1.	local.compute_environment_names：
+	•	遍历 batch，提取所有的 compute environments，并用 distinct 去重。
+	•	在名称前加上前缀（batch_name），例如：pringle-compute-environment-1、BT-compute-environment-2。
+	2.	local.compute_environments：
+	•	使用 for 循环动态生成符合 module 输入的子 map。
+	•	每个 key 是唯一的 compute environment 名称。
+	•	value 是包含固定参数的子 map。
+	3.	模块调用：
+	•	将 local.compute_environments 直接传给模块。
+	4.	输出：
+	•	输出生成的 map，便于调试和确认。
+
+生成的 Map 示例
+
+假设传入的 batch 如示例，最终 local.compute_environments 将如下：
+
+{
+  "pringle-compute-environment-1" = {
+    compute_instance_role       = "arn:aws:iam::123456789012:role/instance-role"
+    compute_max_vcpus           = 3000
+    compute_min_vcpus           = 0
+    compute_desired_vcpus       = 0
+    compute_resource_type       = "SPOT"
+    compute_allocation_strategy = "SPOT_CAPACITY_OPTIMIZED"
+    compute_spot_iam_fleet_role = "arn:aws:iam::123456789012:role/spot-role"
+    compute_subnets             = ["subnet-12345"]
+    compute_instance_type       = ["m5.large"]
+    compute_security_group_ids  = ["sg-123456"]
+  },
+  "pringle-compute-environment-2" = { ... },
+  "pringle-compute-environment-3" = { ... },
+  "BT-compute-environment-1"      = { ... },
+  "BT-compute-environment-2"      = { ... },
+  "BT-compute-environment-3"      = { ... }
+}
+
+执行结果
+
+	1.	代码自动从 batch 提取所有需要的 Compute Environment 名称。
+	2.	动态生成子 map，将其传入 module，无需手动编写重复的 map。
+	3.	输出验证生成的 map 内容，确保符合预期。
+
+如果还有其他定制化需求，比如动态改变某些参数值，可以继续优化 locals 块。随时告诉我！
