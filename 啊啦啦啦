@@ -1,0 +1,90 @@
+错误提示 Invalid reference 表示代码中引用了不正确的资源或变量，具体出现在以下行：
+
+arn if can(regex("${batch_name}-${env}", id))
+
+这里的问题主要是 regex 函数与 can() 结合使用的语法不正确，同时没有完整地指定要匹配的对象。
+
+修正方案
+
+1. 正确使用 regex 和 can()
+
+确保 regex 在合法字符串上运行，并返回匹配结果。can() 要在一个可解析的表达式上使用。
+
+修正代码
+
+locals {
+  # 将 Compute Environment ID 和 ARN 映射成 map
+  compute_env_map = zipmap(
+    module.aws_pringle_compenv.prism_compute_env_id,
+    module.aws_pringle_compenv.prism_compute_env_arn
+  )
+
+  # 匹配 ${batch_name}-${env} 是否存在于 ID 中
+  queues = flatten([
+    for batch_name, queues in var.batch : [
+      for queue_name, env_list in queues : {
+        queue_name       = "${batch_name}-${queue_name}"
+        environment_arns = [
+          for id, arn in local.compute_env_map :
+          arn if can(regex(".*${batch_name}-${env}.*", id))
+        ]
+      }
+    ]
+  ])
+}
+
+代码解释
+
+	1.	zipmap：
+	•	将 prism_compute_env_id 和 prism_compute_env_arn 转换为 map，便于按键值查找。
+	2.	regex 修正：
+	•	"${batch_name}-${env}" 被包裹在 .* 之间，表示只要字符串中包含该值，就匹配成功：
+	•	正则表达式：.*${batch_name}-${env}.*
+	3.	can() 结合 if：
+	•	确保 regex 匹配不会报错，arn 仅在成功匹配时返回。
+	4.	flatten()：
+	•	扁平化生成的列表，确保 queues 是单层结构。
+
+输入示例
+
+variable "batch" {
+  default = {
+    pringle = {
+      "q-1" = ["comp-env-1", "comp-env-2"]
+    }
+    BT = {
+      "q-1" = ["comp-env-1"]
+      "q-2" = ["comp-env-2", "comp-env-3"]
+    }
+  }
+}
+
+输出示例
+
+output "queue_mappings" {
+  value = { for q in local.queues : q.queue_name => q.environment_arns }
+}
+
+输出结果：
+
+queue_mappings = {
+  "pringle-q-1" = [
+    "arn:aws:batch:region:account:compute-environment/pringle-comp-env-1",
+    "arn:aws:batch:region:account:compute-environment/pringle-comp-env-2"
+  ],
+  "BT-q-1" = [
+    "arn:aws:batch:region:account:compute-environment/BT-comp-env-1"
+  ],
+  "BT-q-2" = [
+    "arn:aws:batch:region:account:compute-environment/BT-comp-env-2",
+    "arn:aws:batch:region:account:compute-environment/BT-comp-env-3"
+  ]
+}
+
+总结
+
+	1.	修正了 regex 语法：使用 .* 包裹部分匹配字符串。
+	2.	使用 zipmap 创建映射：将 ID 和 ARN 关联起来，方便查找。
+	3.	确保安全性：使用 can() 结合 if，避免 regex 报错。
+
+如果还有其他问题，请告诉我！
