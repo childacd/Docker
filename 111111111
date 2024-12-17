@@ -1,0 +1,130 @@
+根据你的需求，除了在 local.compute_envs 中确保 Compute Environment 的名称带上前缀外，其他部分也需要进行一些调整，特别是在 队列与 Compute Environment 映射 相关的逻辑上，以确保名称和映射关系都是独立的。
+
+需要修改的部分
+
+	1.	Compute Environment 名称生成
+确保 pringle 和 BT 前缀分别添加到 Compute Environment 的名称中。
+	2.	队列映射中的 Compute Environment ARN 引用
+	•	映射关系要与前缀化后的 Compute Environment 名称对应。
+	•	遍历 batch 输入时，动态添加前缀。
+	3.	Job Queue 模块调用
+	•	确保 Job Queue 名称也带上前缀，保持与 batch 的子 map 名称一致。
+
+最终代码
+
+1. 生成 Compute Environment 的名称和参数
+
+locals {
+  # 生成 Compute Environment 配置，带上 batch_name 作为前缀
+  compute_envs = {
+    for batch_name, queues in var.batch : merge(flatten([
+      for _, env_list in queues : [
+        for env in env_list : {
+          key   = "${batch_name}-${env}"
+          value = {
+            instance_role       = "arn:aws:iam::123456789012:role/instance-role"
+            max_vcpus           = 3000
+            min_vcpus           = 0
+            instance_type       = ["m5.large"]
+            security_group_ids  = ["sg-123456"]
+          }
+        }
+      ]
+    ])...) : merge({})[0]
+  }
+}
+
+2. 调用 Compute Environment 模块
+
+module "compute_env" {
+  source              = "./modules/pringle_compenv"
+  compute_environment = local.compute_envs
+  service_role        = "arn:aws:iam::123456789012:role/service-role"
+  compute_type        = "MANAGED"
+}
+
+3. 队列与 Compute Environment 的映射
+
+在这里，确保队列引用带前缀的 Compute Environment：
+
+locals {
+  # 生成队列与 Compute Environment ARN 的映射
+  queues = flatten([
+    for batch_name, queues in var.batch : [
+      for queue_name, env_list in queues : {
+        queue_name       = "${batch_name}-${queue_name}" # 队列名称带上前缀
+        environment_arns = [
+          for env in env_list : module.compute_env.prism_compute_env_arn[
+            index(module.compute_env.prism_compute_env_id, "${batch_name}-${env}")
+          ]
+        ]
+      }
+    ]
+  ])
+}
+
+4. 调用 Job Queue 模块
+
+module "job_queue" {
+  source = "./modules/job_queue"
+
+  for_each = { for q in local.queues : q.queue_name => q }
+
+  name                 = each.value.queue_name
+  compute_environments = each.value.environment_arns
+}
+
+5. 输出结果
+
+output "queue_mappings" {
+  description = "Mapping of Job Queues to Compute Environments"
+  value = {
+    for q in local.queues : q.queue_name => q.environment_arns
+  }
+}
+
+解释修改内容
+
+	1.	Compute Environment 前缀化：
+每个 Compute Environment 的名称都带上了 batch_name 前缀，如 pringle-comp-env-1 和 BT-comp-env-1。
+	2.	队列映射：
+在生成队列与 Compute Environment ARN 的映射时，使用了前缀化后的名称。
+	3.	Job Queue 名称：
+Job Queue 的名称也加上了前缀，确保它们与 batch 的子 map 名称独立。
+	4.	引用修正：
+使用 index() 和前缀匹配正确引用 Compute Environment 的 ARN。
+
+输出示例
+
+对于以下输入：
+
+batch = {
+  pringle = {
+    "q-1" = ["comp-env-1"]
+    "q-2" = ["comp-env-2"]
+  }
+  BT = {
+    "q-1" = ["comp-env-1"]
+    "q-2" = ["comp-env-2", "comp-env-3"]
+  }
+}
+
+最终输出：
+
+queue_mappings = {
+  "pringle-q-1" = ["arn:aws:batch:eu-west-1:722507666:compute-environment/pringle-comp-env-1"]
+  "pringle-q-2" = ["arn:aws:batch:eu-west-1:722507666:compute-environment/pringle-comp-env-2"]
+  "BT-q-1"      = ["arn:aws:batch:eu-west-1:722507666:compute-environment/BT-comp-env-1"]
+  "BT-q-2"      = [
+    "arn:aws:batch:eu-west-1:722507666:compute-environment/BT-comp-env-2",
+    "arn:aws:batch:eu-west-1:722507666:compute-environment/BT-comp-env-3"
+  ]
+}
+
+总结
+
+	1.	现在 pringle 和 BT 的 Compute Environment 名称是独立的，带有各自的前缀。
+	2.	队列与 Compute Environment 的映射关系也完全符合预期。
+	3.	代码逻辑清晰，可灵活扩展。
+
+如果还有其他需要修改的地方，请告诉我！
