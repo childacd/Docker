@@ -1,0 +1,101 @@
+对于队列（Queue）的创建，以及将 Queue 与 Compute Environment 进行正确的映射，你可以在 Queue 模块 中动态引用 Compute Environment 输出（如 arn 和 id），通过 for_each 和 动态映射逻辑 实现。
+
+完整思路
+
+	1.	Compute Environment 已成功创建：
+	•	通过模块输出 arn 和 id，形成一个动态的可用映射。
+	2.	队列与 Compute Environment 的关系：
+	•	遍历你的 batch 输入变量，生成 Queue 名称及其关联的 Compute Environment ARN 列表。
+	3.	创建队列：
+	•	每个队列使用 for_each 动态生成。
+	•	compute_environments 参数使用对应的 Compute Environment ARNs。
+
+代码实现
+
+1. 生成队列与 Compute Environment 的映射
+
+在主配置文件中，处理队列的映射：
+
+locals {
+  # 提取队列与对应 Compute Environment 的映射
+  queues = flatten([
+    for batch_name, queues in var.batch : [
+      for queue_name, env_list in queues : {
+        queue_name       = "${batch_name}-${queue_name}"
+        environment_arns = [for env in env_list : module.prism_compute[env].arn]
+      }
+    ]
+  ])
+}
+
+2. Queue 模块定义
+
+假设你有一个 Queue 模块（modules/job_queue）：
+
+modules/job_queue/main.tf
+
+resource "aws_batch_job_queue" "this" {
+  name     = var.name
+  priority = var.priority
+
+  compute_environments = var.compute_environments
+}
+
+variable "name" {
+  description = "The name of the job queue"
+  type        = string
+}
+
+variable "priority" {
+  description = "The priority of the job queue"
+  type        = number
+  default     = 1
+}
+
+variable "compute_environments" {
+  description = "List of Compute Environment ARNs"
+  type        = list(string)
+}
+
+3. 动态调用 Queue 模块
+
+在主配置文件中，调用 Queue 模块，传入队列名称和关联的 Compute Environments：
+
+module "job_queue" {
+  source = "./modules/job_queue"
+
+  for_each = { for q in local.queues : q.queue_name => q }
+
+  name                = each.value.queue_name
+  compute_environments = each.value.environment_arns
+}
+
+4. 输出队列信息
+
+在主配置文件中，输出所有创建的队列名称及其关联的 Compute Environments：
+
+output "queue_mappings" {
+  description = "Mapping of Job Queues to Compute Environments"
+  value = {
+    for name, q in module.job_queue : name => q.compute_environments
+  }
+}
+
+代码逻辑说明
+
+	1.	local.queues：
+	•	遍历 batch 输入变量，生成每个队列的名称及其对应的 Compute Environment ARN 列表。
+	•	module.prism_compute[env].arn 从 Compute Environment 模块输出动态引用 ARN。
+	2.	job_queue 模块调用：
+	•	使用 for_each 动态创建队列。
+	•	每个队列将关联正确的 Compute Environment ARN 列表。
+	3.	输出队列映射：
+	•	输出队列名称及其对应的 Compute Environment ARNs。
+
+执行结果
+
+假设你的 batch 输入为：
+
+batch = {
+  pringle = {
+    "q
