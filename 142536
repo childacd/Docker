@@ -1,0 +1,46 @@
+resource "aws_batch_compute_environment" "prism_compute" {
+  compute_environment_name = "prism-compute-env"
+  type                     = "MANAGED"
+  state                    = "ENABLED"
+  compute_resources {
+    type                 = "EC2"
+    minv_cpus            = 0
+    maxv_cpus            = 16
+    instance_role        = "ecsInstanceRole"
+    instance_type        = "t2.micro"
+    subnets              = ["subnet-0bb1c79de3EXAMPLE"]
+    security_group_ids   = ["sg-0bb1c79de3EXAMPLE"]
+    ec2_key_pair         = "my-key-pair"
+  }
+
+  service_role = "ecsServiceRole"
+
+  # Output ARN for use in other resources
+  output = {
+    cluster_arn = "${aws_batch_compute_environment.prism_compute.arn}"
+  }
+}
+
+# Use null_resource to enable container insights on the target ECS cluster
+resource "null_resource" "container_insights" {
+  depends_on = [aws_batch_compute_environment.prism_compute]
+  
+  triggers = {
+    always_run = timestamp()
+  }
+
+  provisioner "local-exec" {
+    command = <<EOF
+      # Get the cluster ARN from the output of aws_batch_compute_environment
+      CLUSTER_ARN="${aws_batch_compute_environment.prism_compute.arn}"
+      echo "Target Cluster ARN: $CLUSTER_ARN"
+
+      # Describe the ECS cluster using the ARN and get the cluster name
+      CLUSTER_NAME=$(aws ecs describe-clusters --clusters $CLUSTER_ARN --region ${var.region} --query 'clusters[0].clusterName' --output text)
+      echo "Cluster Name: $CLUSTER_NAME"
+
+      # Update the ECS cluster to enable Container Insights
+      aws ecs update-cluster-settings --cluster $CLUSTER_NAME --region ${var.region} --settings name=containerInsights,value=${var.container_insights}
+    EOF
+  }
+}
