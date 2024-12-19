@@ -1,0 +1,143 @@
+为了调试和验证中间产物的逻辑，我添加了 output 语句来捕获关键中间结果。以下是调试代码的调整，方便你逐步验证各个逻辑部分是否正确。
+
+# Variables (保持不变)
+variable "project_name" {
+  description = "Project name to identify AMI"
+  type        = string
+}
+
+variable "latest_golden_ami_id" {
+  description = "The ID of the latest golden source AMI"
+  type        = string
+}
+
+variable "force_update_ami" {
+  description = "Flag to force update the AMI creation process"
+  type        = bool
+  default     = false
+}
+
+# 查找现有 AMIs (保持不变)
+data "aws_ami" "existing_amis" {
+  owners = ["self"]
+
+  filter {
+    name   = "name"
+    values = ["*${var.project_name}*"]
+  }
+
+  filter {
+    name   = "source-ami-id"
+    values = [var.latest_golden_ami_id]
+  }
+
+  most_recent = true
+}
+
+# 调试：输出找到的 AMI 信息
+output "existing_ami_ids" {
+  value = data.aws_ami.existing_amis.ids
+}
+
+output "existing_ami_names" {
+  value = data.aws_ami.existing_amis.name
+}
+
+# 确定是否需要跳过创建
+locals {
+  ami_exists = length(data.aws_ami.existing_amis.id) > 0
+  skip_ami_creation = !var.force_update_ami && local.ami_exists
+}
+
+# 调试：输出判断逻辑的结果
+output "ami_exists" {
+  value = local.ami_exists
+}
+
+output "skip_ami_creation" {
+  value = local.skip_ami_creation
+}
+
+# 创建 Instance 和 AMI (保持不变)
+resource "aws_instance" "example" {
+  count = local.skip_ami_creation ? 0 : 1
+
+  ami           = var.latest_golden_ami_id
+  instance_type = "t2.micro"
+
+  tags = {
+    Name = "AMI Source Instance"
+  }
+}
+
+resource "aws_ami" "new_ami" {
+  count = local.skip_ami_creation ? 0 : 1
+
+  name               = "${var.project_name}-ami-${timestamp()}"
+  source_instance_id = aws_instance.example[0].id
+
+  tags = {
+    Name = "Project AMI"
+  }
+}
+
+# 调试：输出新创建的 AMI 信息
+output "new_ami_id" {
+  value = aws_ami.new_ami[0].id
+  condition = local.skip_ami_creation == false
+}
+
+# Launch Template (保持不变)
+resource "aws_launch_template" "lt" {
+  name_prefix   = "${var.project_name}-lt-"
+  image_id      = local.skip_ami_creation ? data.aws_ami.existing_amis.id : aws_ami.new_ami[0].id
+  instance_type = "t2.micro"
+
+  tags = {
+    Name = "Project Launch Template"
+  }
+}
+
+# 调试：输出 Launch Template 使用的 AMI
+output "launch_template_ami_id" {
+  value = local.skip_ami_creation ? data.aws_ami.existing_amis.id : aws_ami.new_ami[0].id
+}
+
+# Compute Environment (保持不变)
+resource "aws_batch_compute_environment" "compute_env" {
+  compute_environment_name = "${var.project_name}-compute-env"
+  type                     = "MANAGED"
+
+  compute_resources {
+    type               = "EC2"
+    instance_role      = "ecsInstanceRole"
+    instance_types     = ["t2.micro"]
+    min_vcpus          = 0
+    max_vcpus          = 16
+    desired_vcpus      = 2
+    launch_template {
+      launch_template_id = aws_launch_template.lt.id
+    }
+  }
+
+  service_role = "AWSBatchServiceRole"
+}
+
+# 额外的调试输出
+output "final_ami_used" {
+  value = local.skip_ami_creation ? data.aws_ami.existing_amis.id : aws_ami.new_ami[0].id
+}
+
+调试说明：
+
+	1.	data.aws_ami.existing_amis：
+	•	输出 existing_ami_ids 和 existing_ami_names，检查是否正确找到符合条件的 AMI。
+	2.	local 判断逻辑：
+	•	输出 ami_exists 和 skip_ami_creation，检查条件逻辑是否正确。
+	3.	资源创建检查：
+	•	输出 new_ami_id，验证是否正确创建了新的 AMI。
+	•	输出 launch_template_ami_id，检查 Launch Template 使用的 AMI 是否符合预期。
+	4.	最终确认：
+	•	输出 final_ami_used，确认最终使用了哪个 AMI。
+
+通过这些 output 语句，你可以逐步验证代码的执行逻辑和中间结果是否符合预期。运行 terraform plan 和 terraform apply 时，这些输出将显示在终端上，方便调试。
