@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# 获取所有 Cluster ARN
+CLUSTER_ARNS=$(aws ecs list-clusters --query 'clusterArns[*]' --region "eu-west-1" | jq -r '.[]')
+
+# 遍历每个 Cluster ARN
+for CLUSTER_ARN in $CLUSTER_ARNS; do
+  echo "Processing Cluster ARN: $CLUSTER_ARN"
+
+  # 获取 Cluster Name
+  CLUSTER_NAME=$(aws ecs describe-clusters --cluster "$CLUSTER_ARN" --query 'clusters[0].clusterName' --region "eu-west-1" --output text)
+  echo "Cluster Name: $CLUSTER_NAME"
+
+  # 更新 Cluster Settings
+  aws ecs update-cluster-settings --cluster "$CLUSTER_NAME" --region "eu-west-1" --settings name=containerInsights,value="enabled"
+  echo "Updated settings for cluster: $CLUSTER_NAME"
+done
