@@ -1,0 +1,9 @@
+英文翻译：
+Risk IT is undergoing a migration process from on-premises infrastructure to the AWS cloud. During this process, the corresponding infrastructure needs to be built, along with CI/CD pipelines, monitoring, and resource management in the cloud. These elements are essential to ensure the proper functioning of business systems and the efficient utilization of cloud resources.
+
+Kim focuses on the design, optimization, and configuration of CI/CD pipelines within Risk IT. Working collaboratively with the team, Kim leverages AWS frameworks to monitor costs and incorporates validation mechanisms into the pipelines to manage the resources being created.
+
+This plays a critical role in ensuring the smooth operation of business systems.
+
+润色后的建议：
+我增加了逻辑上的连贯性和一些更专业的表述，比如“incorporates validation mechanisms”会比“加入校验”更专业一些，整体上简洁清晰地传达了技术重点和业务意义。如果有需要可以再进一步调整。
