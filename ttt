@@ -1,0 +1,11 @@
+英文翻译：
+Risk IT is undergoing a migration process from on-premises infrastructure to the AWS cloud. During this process, it is essential to build the corresponding infrastructure and establish CI/CD pipelines, monitoring, and resource management in the cloud. This ensures the proper operation of business systems and the efficient utilization of cloud resources.
+
+Kim focuses on the design, optimization, and configuration of CI/CD pipelines within Risk IT. Collaborating with the team, Kim leverages AWS frameworks to monitor costs and incorporates validation mechanisms into the pipelines to manage the resources being created.
+
+Proper CI/CD implementation, monitoring, and management of cloud resources are critical to the stable operation of business systems.
+
+润色建议：
+	•	将”云上资源的合理的CICD、监控，管理”翻译为“Proper CI/CD implementation, monitoring, and management of cloud resources”以确保语句更流畅。
+	•	在描述Kim的工作时，加入“leverages AWS frameworks”显得更专业，强调了使用AWS现有工具的能力。
+	•	整体保持简洁，同时突出了核心要点：基础设施建设、CI/CD、成本监控和资源管理。
