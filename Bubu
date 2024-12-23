@@ -1,0 +1,9 @@
+Key Accomplishments
+
+English Version:
+	1.	Setting Up a Compute Environment
+Kim successfully set up the Compute Environment for SFT, addressing a critical pain point where tasks and releases often depended on external teams, leading to delays and prioritization issues. By taking ownership of this work, Kim significantly improved support for the SFT team, streamlining processes and reducing dependency on external resources.
+	2.	Integrating OPA into Market IT’s Provision Pipelines
+Kim played a key role in integrating the OPA engine into all provision pipelines within Market IT. This ensured that resources created adhered to predefined rules, enabling unified management across multiple applications. Kim was actively involved in debugging, testing, and refining the integration during its initial stages, as well as organizing resource standards such as tagging, ensuring consistency and compliance.
+	3.	Enhancing AMI Upgrade Pipeline for Gmail Infrastructure
+Kim made significant enhancements to the AMI upgrade pipeline for Gmail infrastructure, reducing redundant manual tasks and implementing one-click deployment. These improvements greatly optimized the deployment process, enhancing efficiency and reliability.
