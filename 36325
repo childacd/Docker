@@ -1,0 +1,169 @@
+根据你的描述和代码结构的需求，你想实现一种逻辑：
+	1.	默认有一个 default 的配置（可以在 variables 文件中定义）。
+	2.	如果特定的 batch_name 或 batch_name-env 存在对应的变量配置，就使用更细致的变量配置；否则，回退到默认的配置。
+
+这种需求可以通过 Terraform 的 lookup() 函数以及合并 (merge) 的方式实现。
+
+实现方案
+
+1. 定义 Variables 文件
+
+在 variables.tf 文件中定义变量，包括默认配置和可选的更细粒度配置：
+
+variable "default_compute_env" {
+  description = "Default configuration for compute environments"
+  type = map(any)
+  default = {
+    compute_instance_role        = "default-role"
+    compute_max_vcpus            = 16
+    compute_min_vcpus            = 2
+    compute_desired_vcpus        = 4
+    compute_resource_type        = "EC2"
+    compute_allocation_strategy  = "BEST_FIT_PROGRESSIVE"
+    compute_spot_iam_fleet_role  = null
+    compute_subnets              = ["subnet-12345"]
+    compute_instance_type        = "t2.micro"
+    compute_security_group_ids   = ["sg-12345"]
+  }
+}
+
+variable "batch_compute_env_overrides" {
+  description = "Optional overrides for specific batch names or batch-environment pairs"
+  type = map(map(any))
+  default = {
+    # Example for batch-specific override
+    batch1 = {
+      compute_max_vcpus          = 32
+      compute_min_vcpus          = 8
+    }
+
+    # Example for batch-environment-specific override
+    "batch2-dev" = {
+      compute_instance_type      = "m5.large"
+      compute_security_group_ids = ["sg-67890"]
+    }
+  }
+}
+
+2. 使用循环和 lookup 函数
+
+在主配置中，使用循环结合 lookup() 函数，动态选择是否使用默认配置或覆盖配置。
+
+locals {
+  compute_envs = merge(
+    flatten([
+      for batch_name, queues in var.batch : [
+        for _, env_list in queues : [
+          for env in env_list : {
+            "${batch_name}-${env}" = merge(
+              var.default_compute_env,
+              lookup(var.batch_compute_env_overrides, batch_name, {}),
+              lookup(var.batch_compute_env_overrides, "${batch_name}-${env}", {})
+            )
+          }
+        ]
+      ]
+    ])
+  )
+}
+
+3. 逻辑解释
+	•	var.default_compute_env：全局默认配置。
+	•	lookup(var.batch_compute_env_overrides, batch_name, {})：
+	•	如果存在特定 batch_name 的覆盖配置，则会取到值；否则返回空 {}。
+	•	lookup(var.batch_compute_env_overrides, "${batch_name}-${env}", {})：
+	•	如果存在特定 batch_name-env 的覆盖配置，则会取到值；否则返回空 {}。
+	•	merge()：按优先级合并配置：
+	1.	default_compute_env（最低优先级，默认值）。
+	2.	batch_name 的配置（中间优先级）。
+	3.	batch_name-env 的配置（最高优先级）。
+
+4. 应用到资源中
+
+将 locals.compute_envs 的结果用于实际的资源创建。
+
+resource "aws_batch_compute_environment" "example" {
+  for_each = local.compute_envs
+
+  compute_environment_name = each.key
+  compute_resources = {
+    instance_role         = each.value.compute_instance_role
+    max_vcpus             = each.value.compute_max_vcpus
+    min_vcpus             = each.value.compute_min_vcpus
+    desired_vcpus         = each.value.compute_desired_vcpus
+    resource_type         = each.value.compute_resource_type
+    allocation_strategy   = each.value.compute_allocation_strategy
+    subnets               = each.value.compute_subnets
+    instance_type         = each.value.compute_instance_type
+    security_group_ids    = each.value.compute_security_group_ids
+  }
+}
+
+示例输入和结果
+
+示例变量输入
+
+variable "batch" {
+  default = {
+    batch1 = {
+      queues = [
+        ["dev", "prod"]
+      ]
+    }
+    batch2 = {
+      queues = [
+        ["dev"]
+      ]
+    }
+  }
+}
+
+最终 local.compute_envs 的结果
+
+{
+  "batch1-dev" = {
+    compute_instance_role        = "default-role"
+    compute_max_vcpus            = 32
+    compute_min_vcpus            = 8
+    compute_desired_vcpus        = 4
+    compute_resource_type        = "EC2"
+    compute_allocation_strategy  = "BEST_FIT_PROGRESSIVE"
+    compute_spot_iam_fleet_role  = null
+    compute_subnets              = ["subnet-12345"]
+    compute_instance_type        = "t2.micro"
+    compute_security_group_ids   = ["sg-12345"]
+  },
+  "batch1-prod" = {
+    compute_instance_role        = "default-role"
+    compute_max_vcpus            = 32
+    compute_min_vcpus            = 8
+    compute_desired_vcpus        = 4
+    compute_resource_type        = "EC2"
+    compute_allocation_strategy  = "BEST_FIT_PROGRESSIVE"
+    compute_spot_iam_fleet_role  = null
+    compute_subnets              = ["subnet-12345"]
+    compute_instance_type        = "t2.micro"
+    compute_security_group_ids   = ["sg-12345"]
+  },
+  "batch2-dev" = {
+    compute_instance_role        = "default-role"
+    compute_max_vcpus            = 16
+    compute_min_vcpus            = 2
+    compute_desired_vcpus        = 4
+    compute_resource_type        = "EC2"
+    compute_allocation_strategy  = "BEST_FIT_PROGRESSIVE"
+    compute_spot_iam_fleet_role  = null
+    compute_subnets              = ["subnet-12345"]
+    compute_instance_type        = "m5.large"
+    compute_security_group_ids   = ["sg-67890"]
+  }
+}
+
+总结
+	•	默认优先级：default_compute_env。
+	•	动态覆盖：
+	•	根据 batch_name 配置覆盖默认值。
+	•	根据 batch_name-env 配置进一步覆盖。
+	•	灵活可扩展：可根据具体需求添加更多规则。
+
+如果需要进一步调整，请随时告诉我！
