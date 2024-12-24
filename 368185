@@ -1,0 +1,167 @@
+你描述的情况中，需要将 default 和 override 的配置变量都定义为 object 类型，同时保留合并逻辑，使得 override 配置优先级更高。以下是解决方案：
+
+变量定义
+
+我们将 default_compute_env 和 batch_compute_env_overrides 定义为 object 类型，同时确保可以进行优先级合并。
+
+default_compute_env
+
+variable "default_compute_env" {
+  description = "Default configuration for compute environment"
+  type = object({
+    compute_instance_role       = string
+    compute_max_vcpus           = number
+    compute_min_vcpus           = number
+    compute_desired_vcpus       = number
+    compute_resource_type       = string
+    compute_allocation_strategy = string
+    compute_spot_iam_fleet_role = optional(string, "arn:aws:iam::123456789012:role/SpotFleetRole")
+    compute_subnets             = optional(list(string), [])
+    compute_instance_type       = optional(list(string), ["m5.16xlarge"])
+    compute_security_group_ids  = optional(list(string), [])
+  })
+
+  default = {
+    compute_instance_role       = "arn:aws:iam::123456789012:role/ExampleRole"
+    compute_max_vcpus           = 3000
+    compute_min_vcpus           = 0
+    compute_desired_vcpus       = 0
+    compute_resource_type       = "SPOT"
+    compute_allocation_strategy = "SPOT_PRIORITY"
+    compute_subnets             = []
+    compute_instance_type       = ["m5.16xlarge"]
+    compute_security_group_ids  = ["sg-088abcd1234ef5678"]
+  }
+}
+
+batch_compute_env_overrides
+
+定义 batch_compute_env_overrides 作为覆盖配置，支持以 batch_name 或 batch_name-env 为 key 的配置，类型为 map(object)。
+
+variable "batch_compute_env_overrides" {
+  description = "Overrides for compute environments"
+  type = map(
+    object({
+      compute_instance_role       = optional(string)
+      compute_max_vcpus           = optional(number)
+      compute_min_vcpus           = optional(number)
+      compute_desired_vcpus       = optional(number)
+      compute_resource_type       = optional(string)
+      compute_allocation_strategy = optional(string)
+      compute_spot_iam_fleet_role = optional(string)
+      compute_subnets             = optional(list(string))
+      compute_instance_type       = optional(list(string))
+      compute_security_group_ids  = optional(list(string))
+    })
+  )
+
+  default = {}
+}
+
+Local 逻辑更新
+
+在 locals 中，保持现有的合并逻辑，但使用 merge 和 lookup 合并 default_compute_env 和 batch_compute_env_overrides 的对象类型。
+
+更新的 locals
+
+locals {
+  compute_envs = merge(
+    flatten([
+      for batch_name, queues in var.batch : [
+        for _, env_list in queues : [
+          for env in env_list : {
+            "${batch_name}-${env}" = merge(
+              var.default_compute_env,
+              lookup(var.batch_compute_env_overrides, batch_name, {}),
+              lookup(var.batch_compute_env_overrides, "${batch_name}-${env}", {})
+            )
+          }
+        ]
+      ]
+    ])
+  )
+}
+
+逻辑解析
+	1.	默认配置 (var.default_compute_env)：
+提供所有环境的基础默认值。
+	2.	覆盖配置 (var.batch_compute_env_overrides)：
+	•	首先查找 batch_name 对应的覆盖值（优先级低）。
+	•	再查找 ${batch_name}-${env} 对应的覆盖值（优先级高）。
+	•	使用 merge 合并，优先使用覆盖值。
+	3.	结果结构：
+locals.compute_envs 将是一个完整的 map(object) 类型，包含每个 batch_name-env 的完整配置。
+
+使用示例
+
+示例输入
+
+variable "batch" {
+  default = {
+    batch1 = {
+      queue1 = ["env1", "env2"]
+    }
+    batch2 = {
+      queue2 = ["env3"]
+    }
+  }
+}
+
+variable "batch_compute_env_overrides" {
+  default = {
+    "batch1" = {
+      compute_max_vcpus = 2000
+    }
+    "batch1-env1" = {
+      compute_min_vcpus = 10
+    }
+  }
+}
+
+结果输出
+
+运行 terraform console 查看 locals.compute_envs：
+
+> local.compute_envs
+{
+  "batch1-env1" = {
+    compute_instance_role       = "arn:aws:iam::123456789012:role/ExampleRole"
+    compute_max_vcpus           = 2000
+    compute_min_vcpus           = 10
+    compute_desired_vcpus       = 0
+    compute_resource_type       = "SPOT"
+    compute_allocation_strategy = "SPOT_PRIORITY"
+    compute_spot_iam_fleet_role = "arn:aws:iam::123456789012:role/SpotFleetRole"
+    compute_subnets             = []
+    compute_instance_type       = ["m5.16xlarge"]
+    compute_security_group_ids  = ["sg-088abcd1234ef5678"]
+  }
+  "batch1-env2" = {
+    compute_instance_role       = "arn:aws:iam::123456789012:role/ExampleRole"
+    compute_max_vcpus           = 2000
+    compute_min_vcpus           = 0
+    compute_desired_vcpus       = 0
+    compute_resource_type       = "SPOT"
+    compute_allocation_strategy = "SPOT_PRIORITY"
+    compute_spot_iam_fleet_role = "arn:aws:iam::123456789012:role/SpotFleetRole"
+    compute_subnets             = []
+    compute_instance_type       = ["m5.16xlarge"]
+    compute_security_group_ids  = ["sg-088abcd1234ef5678"]
+  }
+  "batch2-env3" = {
+    compute_instance_role       = "arn:aws:iam::123456789012:role/ExampleRole"
+    compute_max_vcpus           = 3000
+    compute_min_vcpus           = 0
+    compute_desired_vcpus       = 0
+    compute_resource_type       = "SPOT"
+    compute_allocation_strategy = "SPOT_PRIORITY"
+    compute_spot_iam_fleet_role = "arn:aws:iam::123456789012:role/SpotFleetRole"
+    compute_subnets             = []
+    compute_instance_type       = ["m5.16xlarge"]
+    compute_security_group_ids  = ["sg-088abcd1234ef5678"]
+  }
+}
+
+总结
+
+通过将 default_compute_env 和 batch_compute_env_overrides 定义为 object 类型，你可以显式定义字段类型并避免类型冲突。此外，使用 merge 结合 lookup，可以动态生成覆盖后的配置，同时保持灵活性。
