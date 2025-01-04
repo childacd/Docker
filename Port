@@ -1,0 +1,147 @@
+在 AWS EC2 上，查找实例开放的端口主要依赖于以下几种方法：
+
+1. 查看 Security Group（最关键）
+
+Security Group 是 AWS EC2 实例的防火墙，控制了实例的入站和出站流量。以下是查看方法：
+
+方法 1：使用 AWS 控制台
+	1.	登录 AWS 管理控制台。
+	2.	导航到 EC2 Dashboard。
+	3.	找到你的 EC2 实例：
+	•	点击实例的名称。
+	•	在下方的“描述”选项卡中找到 Security Groups。
+	4.	点击 Security Group 的名称，查看入站规则（Inbound Rules）和出站规则（Outbound Rules）。
+	•	入站规则：列出了允许访问实例的端口。
+	•	出站规则：列出了允许从实例发出的连接。
+
+方法 2：使用 AWS CLI
+
+如果你熟悉 CLI，可以用 AWS CLI 更快速地查看 Security Group 的配置：
+	1.	列出实例的 Security Group：
+
+aws ec2 describe-instances --instance-ids <instance_id> --query "Reservations[*].Instances[*].SecurityGroups"
+
+输出示例：
+
+[
+    {
+        "GroupName": "my-security-group",
+        "GroupId": "sg-0abcd123456efgh"
+    }
+]
+
+
+	2.	查看 Security Group 的规则：
+
+aws ec2 describe-security-groups --group-ids <group_id>
+
+输出示例：
+
+{
+    "IpPermissions": [
+        {
+            "IpProtocol": "tcp",
+            "FromPort": 22,
+            "ToPort": 22,
+            "IpRanges": [
+                {
+                    "CidrIp": "0.0.0.0/0"
+                }
+            ]
+        },
+        {
+            "IpProtocol": "tcp",
+            "FromPort": 80,
+            "ToPort": 80,
+            "IpRanges": [
+                {
+                    "CidrIp": "0.0.0.0/0"
+                }
+            ]
+        }
+    ]
+}
+
+	•	FromPort 和 ToPort 表示开放的端口范围。
+	•	CidrIp 表示允许访问的 IP 地址范围。
+
+2. 查看网络 ACL（可选）
+
+如果你的实例的子网配置了网络 ACL（NACL），它可能进一步限制了端口访问。
+
+方法 1：使用 AWS 控制台
+	1.	导航到 VPC Dashboard。
+	2.	点击 Subnets，找到实例所在的子网。
+	3.	查看该子网的关联网络 ACL。
+	4.	在网络 ACL 的“入站规则”和“出站规则”中，检查端口的允许和拒绝规则。
+
+方法 2：使用 AWS CLI
+	1.	找到子网 ID：
+
+aws ec2 describe-instances --instance-ids <instance_id> --query "Reservations[*].Instances[*].SubnetId"
+
+
+	2.	查看网络 ACL 的规则：
+
+aws ec2 describe-network-acls --filters Name=association.subnet-id,Values=<subnet_id>
+
+3. 动态扫描实例的开放端口
+
+如果你无法通过 Security Group 或 NACL 明确找到开放端口，可以通过以下方法动态检测实例的实际开放端口：
+
+方法 1：使用 netstat
+	1.	登录到实例：
+
+ssh -i <key> ec2-user@<public_ip>
+
+
+	2.	查看当前监听的端口：
+
+netstat -tuln
+
+输出示例：
+
+tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN
+tcp        0      0 0.0.0.0:80              0.0.0.0:*               LISTEN
+
+	•	0.0.0.0:22 表示服务监听所有网络接口的 22 端口。
+	•	检查是否监听了你期望的端口。
+
+方法 2：使用端口扫描工具
+
+如果你希望从外部检查实例的开放端口，可以使用工具如 nmap：
+	1.	在你的本地机器上安装 nmap：
+
+sudo apt install nmap   # Ubuntu
+
+
+	2.	扫描实例的开放端口：
+
+nmap -Pn <instance_ip>
+
+示例输出：
+
+Starting Nmap 7.60 ( https://nmap.org ) at 2025-01-04 15:30
+Nmap scan report for 54.123.45.67
+PORT     STATE  SERVICE
+22/tcp   open   ssh
+80/tcp   open   http
+443/tcp  open   https
+
+4. 结合 Security Group 和监听端口进行验证
+
+即使你的实例上有服务监听某些端口，如果 Security Group 或 NACL 没有开放这些端口，外部依然无法访问。因此：
+	1.	确认服务监听了期望端口（通过 netstat 或 ss）。
+	2.	确保 Security Group 和 NACL 规则允许访问这些端口。
+
+总结
+	1.	最常见的端口问题来源：
+	•	Security Group 入站规则未开放。
+	•	网络 ACL 限制了访问。
+	•	服务只监听了本地地址（127.0.0.1）。
+	2.	推荐解决方法：
+	•	查看 Security Group 和 NACL 配置，确保目标端口对外开放。
+	•	登录实例，使用 netstat 检查服务是否在监听期望的端口。
+	•	如果需要，从本地用工具如 nmap 扫描实例的开放端口。
+
+通过这些方法，你可以准确定位和验证 AWS EC2 实例上的开放端口。
