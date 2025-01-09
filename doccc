@@ -1,0 +1,135 @@
+一、避免使用 sudo 运行 Docker 命令
+
+默认情况下，Docker 要求超级用户权限，因此需要使用 sudo。可以通过以下步骤配置，让你的用户无需 sudo 即可运行 Docker：
+
+1. 将当前用户添加到 Docker 用户组
+
+执行以下命令：
+
+sudo groupadd docker  # 创建 docker 组（如果还没有）
+sudo usermod -aG docker $USER  # 将当前用户添加到 docker 组
+
+2. 重新加载用户组
+
+执行以下命令，使更改生效：
+
+newgrp docker
+
+或者，注销并重新登录用户会话。
+
+3. 测试是否成功
+
+运行以下命令，测试是否无需 sudo：
+
+docker ps
+
+如果输出当前容器列表（即使为空），说明配置成功。
+
+二、设置常用 Docker 命令的 Alias
+
+你可以通过配置 Linux 的 ~/.bashrc 或 ~/.zshrc 文件为常用 Docker 命令设置别名，以下是一些常见命令的缩写设置：
+
+1. 编辑配置文件
+
+打开 ~/.bashrc（如果用的是 bash）或 ~/.zshrc（如果用的是 zsh）：
+
+nano ~/.bashrc  # 或者 nano ~/.zshrc
+
+2. 添加以下 alias 配置
+
+# 查看所有容器
+alias dps="docker ps -a"
+
+# 查看某个容器的日志（用法：dlog <container_id>）
+alias dlog="docker logs"
+
+# 进入容器（用法：dexec <container_id>）
+alias dexec="docker exec -it"
+
+# 停止容器（用法：dstop <container_id>）
+alias dstop="docker stop"
+
+# 启动容器（用法：dstart <container_id>）
+alias dstart="docker start"
+
+# 删除容器（用法：drm <container_id>）
+alias drm="docker rm"
+
+# 查看 Docker 镜像
+alias dimages="docker images"
+
+# 删除 Docker 镜像（用法：drmi <image_id>）
+alias drmi="docker rmi"
+
+# 启动一个交互式容器（用法：drun <image_name> <command>）
+alias drun="docker run -it"
+
+# 清理所有未使用的容器和镜像
+alias dclean="docker system prune -af"
+
+3. 保存并刷新配置
+
+保存文件后，运行以下命令让更改生效：
+
+source ~/.bashrc  # 或 source ~/.zshrc
+
+三、Alias 用法示例
+	1.	查看所有容器：
+
+dps
+
+
+	2.	查看容器日志：
+
+dlog <container_id>
+
+
+	3.	进入容器：
+
+dexec <container_id> /bin/bash
+
+
+	4.	删除某个容器：
+
+drm <container_id>
+
+
+	5.	清理未使用的资源：
+
+dclean
+
+
+# List all containers
+alias dps="docker ps -a"
+
+# View logs of a specific container (Usage: dlog <container_id>)
+alias dlog="docker logs"
+
+# Enter a container (Usage: dexec <container_id>)
+alias dexec="docker exec -it"
+
+# Stop a container (Usage: dstop <container_id>)
+alias dstop="docker stop"
+
+# Start a container (Usage: dstart <container_id>)
+alias dstart="docker start"
+
+# Remove a container (Usage: drm <container_id>)
+alias drm="docker rm"
+
+# List Docker images
+alias dimages="docker images"
+
+# Remove a Docker image (Usage: drmi <image_id>)
+alias drmi="docker rmi"
+
+# Run an interactive container (Usage: drun <image_name> <command>)
+alias drun="docker run -it"
+
+# Clean up all unused containers and images
+alias dclean="docker system prune -af"
+
+
+  
+
+通过这些配置，你可以避免重复输入冗长的 Docker 命令，同时免去每次使用 sudo 的麻烦。
