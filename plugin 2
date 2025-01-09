@@ -1,0 +1,67 @@
+是的，你可以通过 Shell 脚本和管道将列出所有插件的命令输出作为输入，逐个查询插件的详细信息。这可以轻松实现自动化处理，比如列出插件的路径或其他详细信息。以下是一个实现方法。
+
+实现步骤
+	1.	列出所有插件的名字
+使用 ansible-doc -t inventory -l 列出插件名称（第一列），如：
+
+ansible-doc -t inventory -l | awk '{print $1}'
+
+这会提取插件的名字（比如 aws_ec2, azure_rm）。
+
+	2.	将每个插件名称传递给详细查询命令
+使用 xargs 或 while 循环将插件名称传递给 ansible-doc -t inventory <plugin>。
+	3.	组合脚本：
+
+示例 1：简单的管道脚本（单次执行完成）
+
+ansible-doc -t inventory -l | awk '{print $1}' | xargs -I {} sh -c "echo 'Plugin: {}'; ansible-doc -t inventory {} | grep -E 'NAME|FILE'"
+
+	•	awk '{print $1}'：提取插件名称。
+	•	xargs -I {}：逐一替换 {} 为插件名称。
+	•	sh -c：执行复合命令：
+	•	echo 'Plugin: {}'：打印插件名称。
+	•	ansible-doc -t inventory {}：查询插件详细信息。
+	•	grep -E 'NAME|FILE'：仅提取插件的名字和路径。
+
+示例输出：
+
+Plugin: aws_ec2
+  NAME: Retrieve inventory from AWS EC2
+  FILE: /usr/lib/python3.9/site-packages/ansible/plugins/inventory/aws_ec2.py
+
+Plugin: azure_rm
+  NAME: Get inventory from Azure Resource Manager
+  FILE: /usr/lib/python3.9/site-packages/ansible/plugins/inventory/azure_rm.py
+...
+
+示例 2：保存结果到文件（更适合大量插件）
+
+如果需要保存输出到文件，可以稍作修改：
+
+ansible-doc -t inventory -l | awk '{print $1}' | xargs -I {} sh -c "echo 'Plugin: {}'; ansible-doc -t inventory {} | grep -E 'NAME|FILE'" > plugins_info.txt
+
+查看结果：
+
+cat plugins_info.txt
+
+示例 3：用 while 循环增强可读性
+
+ansible-doc -t inventory -l | awk '{print $1}' | while read plugin; do
+    echo "Plugin: $plugin"
+    ansible-doc -t inventory "$plugin" | grep -E 'NAME|FILE'
+    echo "-----------------------------"
+done
+
+优化提示
+	•	如果插件列表较大，可以对输出添加分页工具（如 less）：
+
+ansible-doc -t inventory -l | awk '{print $1}' | xargs -I {} sh -c "echo 'Plugin: {}'; ansible-doc -t inventory {} | grep -E 'NAME|FILE'" | less
+
+
+	•	如果只需要判断来源，可以专注于 FILE 字段提取：
+
+ansible-doc -t inventory -l | awk '{print $1}' | xargs -I {} sh -c "ansible-doc -t inventory {} | grep 'FILE:'"
+
+总结
+
+通过管道和脚本结合，可以快速处理所有插件信息，提取具体字段（如路径）来分析来源。这种方法既灵活又高效，适用于自动化需求。
