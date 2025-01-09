@@ -1,0 +1,2 @@
+python -c "from ansible.plugins.loader import inventory_loader; \
+print('\n'.join([f'{name}: {plugin._original_path}' for name, plugin in inventory_loader.all().items()]))"
