@@ -1,0 +1,100 @@
+当然可以！以下是修改后的 Docker Compose 文件示例，让 Metastore 和 HiveServer2 一起启动。
+
+Docker Compose 文件
+
+version: "3.8"
+services:
+  hive-metastore:
+    image: your_hive_image
+    container_name: hive-metastore
+    environment:
+      - SERVICE=hive-metastore
+      - HIVE_HOME=/opt/hive
+      - HADOOP_HOME=/opt/hadoop
+      - JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+      - METASTORE_PORT=9083
+    ports:
+      - "9083:9083"  # Metastore Thrift 服务端口
+    command: >
+      bash -c "schematool -initSchema -dbType mysql && 
+               hive --service metastore"
+    depends_on:
+      - mysql
+    volumes:
+      - /path/to/hive/conf:/opt/hive/conf
+      - /path/to/data:/opt/hive/data
+
+  hive-server2:
+    image: your_hive_image
+    container_name: hive-server2
+    environment:
+      - SERVICE=hive-server2
+      - HIVE_HOME=/opt/hive
+      - HADOOP_HOME=/opt/hadoop
+      - JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+      - HIVE_SERVER2_PORT=10000
+      - METASTORE_URI=thrift://hive-metastore:9083
+    ports:
+      - "10000:10000"  # HiveServer2 JDBC 端口
+    command: >
+      bash -c "hive --service hiveserver2"
+    depends_on:
+      - hive-metastore
+    volumes:
+      - /path/to/hive/conf:/opt/hive/conf
+      - /path/to/data:/opt/hive/data
+
+  mysql:
+    image: mysql:5.7
+    container_name: hive-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: hive_metastore
+      MYSQL_USER: hive
+      MYSQL_PASSWORD: hive
+    ports:
+      - "3306:3306"
+    volumes:
+      - /path/to/mysql/data:/var/lib/mysql
+
+关键修改
+	1.	添加 hive-server2 服务：
+	•	新增了 hive-server2 容器。
+	•	将其 METASTORE_URI 设置为 Metastore 服务的地址（thrift://hive-metastore:9083）。
+	•	暴露了默认 JDBC 端口 10000。
+	2.	配置依赖：
+	•	hive-server2 的 depends_on 确保 Metastore 服务先启动。
+	•	Metastore 依赖 MySQL 数据库，用于存储元数据。
+	3.	共享配置和数据：
+	•	将 hive/conf 和 hive/data 作为共享卷挂载，确保 hive-server2 和 hive-metastore 使用相同的配置和数据。
+	4.	MySQL 数据库支持：
+	•	hive-metastore 使用 MySQL 作为元数据存储。
+	•	MySQL 配置了 hive_metastore 数据库，并使用 hive 用户名和密码。
+
+启动方式
+
+在 Docker Compose 文件所在目录执行以下命令：
+
+docker-compose up -d
+
+验证服务
+	1.	验证 Metastore 是否启动：
+	•	使用 telnet 或 nc 测试 Metastore 的 Thrift 服务：
+
+telnet localhost 9083
+
+
+	2.	验证 HiveServer2 是否启动：
+	•	使用 beeline 连接 HiveServer2：
+
+beeline -u jdbc:hive2://localhost:10000
+
+
+	3.	验证 Metastore 和 HiveServer2 的联通性：
+	•	在 Beeline 中运行以下 SQL：
+
+SHOW DATABASES;
+
+总结
+
+此修改后的 Docker Compose 文件可以同时启动 Hive Metastore 和 HiveServer2，并确保它们正确通信。通过 Beeline 或其他工具（如 DBeaver）可以直接连接 HiveServer2 执行 SQL 查询和管理元数据。
