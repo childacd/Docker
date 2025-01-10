@@ -1,0 +1,4 @@
+<property>
+  <name>datanucleus.schema.autoCreateTables</name>
+  <value>true</value>
+</property>
