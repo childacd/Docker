@@ -1,0 +1,1 @@
+beeline -u "jdbc:mysql://mysql-container:3306/metastore" -n hive -p password
