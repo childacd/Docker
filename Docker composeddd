@@ -1,0 +1,104 @@
+以下是一个完整的 docker-compose.yml 文件，满足你在同一台机器上启动 MySQL 和 Hive Metastore 容器，并使它们共享同一个网络的需求。
+
+docker-compose.yml 文件内容
+
+version: '3.8'
+services:
+  mysql:
+    image: mysql:8.0 # MySQL 容器的镜像版本
+    container_name: mysql-container
+    environment:
+      MYSQL_ROOT_PASSWORD: root          # MySQL root 用户密码
+      MYSQL_DATABASE: metastore          # 自动创建 Hive Metastore 使用的数据库
+      MYSQL_USER: hive                   # Hive 使用的数据库用户
+      MYSQL_PASSWORD: hive               # Hive 用户密码
+    networks:
+      - hive-network
+    ports:
+      - "3306:3306"                      # 将 MySQL 容器的 3306 端口映射到宿主机
+    volumes:
+      - mysql-data:/var/lib/mysql        # 持久化存储 MySQL 数据
+
+  hive-metastore:
+    image: apache/hive:3.1.3             # Hive Metastore 的镜像
+    container_name: hive-metastore
+    depends_on:
+      - mysql                            # 确保 MySQL 服务先启动
+    networks:
+      - hive-network
+    environment:
+      - HIVE_METASTORE_DB_HOST=mysql-container # 指定 MySQL 容器名称
+      - HIVE_METASTORE_DB_PORT=3306            # MySQL 端口
+      - HIVE_METASTORE_DB_NAME=metastore       # Hive Metastore 使用的数据库名
+      - HIVE_METASTORE_DB_USER=hive            # 数据库用户名
+      - HIVE_METASTORE_DB_PASS=hive            # 数据库用户密码
+    ports:
+      - "9083:9083"                      # 将 Hive Metastore 的端口映射到宿主机
+    command: /opt/hive/bin/hive --service metastore
+
+networks:
+  hive-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
+
+文件说明
+	1.	mysql 服务
+	•	使用 mysql:8.0 官方镜像。
+	•	将 MySQL 数据库端口 3306 映射到宿主机，方便调试。
+	•	持久化数据存储到 Docker 卷 mysql-data，防止数据丢失。
+	2.	hive-metastore 服务
+	•	使用 Apache Hive 官方镜像（3.1.3）。
+	•	配置环境变量，连接到 MySQL 服务。
+	•	将 Hive Metastore 的服务端口 9083 暴露到宿主机。
+	3.	hive-network 网络
+	•	两个服务都加入了自定义的 hive-network 网络，容器之间可以通过名称直接通信。
+	4.	volumes
+	•	用于持久化存储 MySQL 数据库文件。
+
+如何运行
+	1.	保存文件
+	•	将以上内容保存为 docker-compose.yml。
+	2.	启动服务
+	•	在 docker-compose.yml 文件所在目录运行以下命令：
+
+docker-compose up -d
+
+
+	3.	验证运行状态
+	•	检查服务是否正常运行：
+
+docker-compose ps
+
+
+	•	如果需要查看容器日志：
+
+docker-compose logs mysql
+docker-compose logs hive-metastore
+
+
+	4.	连接 MySQL
+	•	在宿主机上使用以下命令连接 MySQL：
+
+mysql -h 127.0.0.1 -P 3306 -u hive -phive
+
+
+	5.	验证 Hive Metastore
+	•	Hive Metastore 会在 9083 端口提供服务，其他工具如 Beeline 可以通过：
+
+jdbc:hive2://<host>:9083/
+
+连接到 Hive。
+
+管理服务
+	1.	停止服务
+
+docker-compose down
+
+
+	2.	删除服务及其数据
+
+docker-compose down -v
+
+如果需要对配置做进一步调整（如 Hive Metastore 高级参数），可以随时告诉我！
