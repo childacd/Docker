@@ -1,0 +1,95 @@
+从你的日志中可以看出，虽然你指定了 -dbType mysql，但是日志却显示 jdbc:derby，这是一个值得注意的问题。以下是可能的原因和解决方法：
+
+原因分析：
+	1.	hive-site.xml 配置问题
+	•	Hive Metastore 在初始化时会根据 hive-site.xml 中的配置来决定使用哪种数据库。如果配置中没有正确指定 MySQL 的连接 URL，Hive 可能会默认使用嵌入式 Derby 数据库。
+	•	检查你的 hive-site.xml 文件中是否配置了正确的 MySQL URL 和驱动，例如：
+
+<property>
+  <name>javax.jdo.option.ConnectionURL</name>
+  <value>jdbc:mysql://<mysql-host>:3306/metastore?createDatabaseIfNotExist=true</value>
+</property>
+<property>
+  <name>javax.jdo.option.ConnectionDriverName</name>
+  <value>com.mysql.cj.jdbc.Driver</value>
+</property>
+<property>
+  <name>javax.jdo.option.ConnectionUserName</name>
+  <value>your-mysql-username</value>
+</property>
+<property>
+  <name>javax.jdo.option.ConnectionPassword</name>
+  <value>your-mysql-password</value>
+</property>
+
+
+	2.	默认 Derby 数据库被启用
+	•	如果 hive-site.xml 中没有配置 javax.jdo.option.ConnectionURL 或者配置文件没有被加载，Hive 会默认使用嵌入式 Derby 数据库进行初始化。
+	3.	schematool 的参数被忽略
+	•	即使你在命令行使用了 -dbType mysql，如果 Hive 的配置文件中没有正确配置 MySQL 数据库，schematool 可能会优先使用默认的 Derby。
+	4.	环境变量未正确设置
+	•	确保你的 HIVE_HOME 和相关的配置目录（如 HIVE_CONF_DIR）正确指向包含 hive-site.xml 文件的路径。如果环境变量未正确设置，Hive 可能会找不到正确的配置文件。
+
+解决方法：
+
+1. 检查 hive-site.xml
+
+确认以下配置项在 hive-site.xml 文件中正确设置：
+
+<property>
+  <name>javax.jdo.option.ConnectionURL</name>
+  <value>jdbc:mysql://<mysql-host>:3306/metastore?createDatabaseIfNotExist=true</value>
+</property>
+<property>
+  <name>javax.jdo.option.ConnectionDriverName</name>
+  <value>com.mysql.cj.jdbc.Driver</value>
+</property>
+<property>
+  <name>javax.jdo.option.ConnectionUserName</name>
+  <value>your-mysql-username</value>
+</property>
+<property>
+  <name>javax.jdo.option.ConnectionPassword</name>
+  <value>your-mysql-password</value>
+</property>
+
+2. 检查环境变量
+
+确保以下环境变量正确设置：
+
+export HIVE_HOME=/path/to/your/hive
+export HIVE_CONF_DIR=$HIVE_HOME/conf
+
+3. 验证 schematool 是否使用正确的配置
+
+执行以下命令，指定 -verbose 参数，确认 schematool 加载的配置文件：
+
+$HIVE_HOME/bin/schematool -dbType mysql -initSchema -verbose
+
+观察输出日志中是否有提到 MySQL 的 JDBC URL（例如 jdbc:mysql://），而不是 jdbc:derby:。
+
+4. 删除 Derby 的残留数据
+
+如果之前错误地初始化了嵌入式 Derby 数据库，可以清除 Derby 的相关目录，以避免干扰：
+
+rm -rf metastore_db
+
+这个目录通常位于 HIVE_HOME 下。
+
+5. 检查 MySQL 驱动是否可用
+
+确认 MySQL JDBC 驱动已放置在 $HIVE_HOME/lib/ 下，并且文件名称类似 mysql-connector-java-x.x.x.jar。
+
+6. 再次初始化
+
+重新运行初始化命令：
+
+$HIVE_HOME/bin/schematool -dbType mysql -initSchema
+
+验证结果
+
+初始化完成后，你可以通过以下命令验证 Metastore 是否正确连接到 MySQL：
+
+mysql -u your-mysql-username -p -e "USE metastore; SHOW TABLES;"
+
+如果表结构已经创建成功，说明问题解决。
