@@ -1,0 +1,138 @@
+下面是一个标准的 ConfigMap 定义和 Volume 挂载方式的示例，适用于将某个目录下的多个文件（例如 file1.txt、file2.txt、file3.txt）加载到 Pod 中，确保文件原封不动地可以在容器中访问。
+
+假设文件路径和内容
+
+假设你有如下目录结构：
+
+config/
+├── file1.txt
+├── file2.txt
+└── file3.txt
+
+1. 定义 ConfigMap
+
+使用 Helm 模板生成一个包含多个文件内容的 ConfigMap。
+
+ConfigMap 模板 (templates/configmap.yaml)
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: my-configmap
+data:
+  {{- range $path, $file := .Files.Glob "config/*" }}
+  {{ $path | base }}: |
+    {{ $file | nindent 4 }}
+  {{- end }}
+
+说明：
+	•	Files.Glob "config/*"：匹配 config/ 目录下的所有文件。
+	•	{{ $path | base }}：使用文件的基础名称作为键，例如 file1.txt。
+	•	{{ $file | nindent 4 }}：将文件内容按原样填充到 ConfigMap 中，并确保正确缩进。
+
+2. 在 Pod 中挂载 ConfigMap
+
+使用 Deployment 或 StatefulSet 挂载 ConfigMap。
+
+Deployment 模板 (templates/deployment.yaml)
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+      - name: my-container
+        image: nginx
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/my-config       # 挂载到容器内的路径
+      volumes:
+      - name: config-volume
+        configMap:
+          name: my-configmap             # 引用 ConfigMap 的名称
+
+说明：
+	•	configMap.name: 指向创建的 ConfigMap 名称。
+	•	volumeMounts.mountPath: 指定容器内文件挂载的位置，例如 /etc/my-config。
+	•	挂载后，config/file1.txt 的内容会出现在容器的 /etc/my-config/file1.txt 中。
+
+3. 验证文件挂载
+
+在容器中，可以通过以下命令验证：
+
+kubectl exec -it <pod-name> -- ls /etc/my-config
+kubectl exec -it <pod-name> -- cat /etc/my-config/file1.txt
+
+生成的 ConfigMap 示例
+
+以下是生成的 ConfigMap 的 YAML（假设 file1.txt 内容为 Hello, file2.txt 内容为 World）：
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: my-configmap
+data:
+  file1.txt: |
+    Hello
+  file2.txt: |
+    World
+  file3.txt: |
+    This is file3
+
+注意事项
+	1.	文件路径： Files.Glob 的路径必须相对于 Helm Chart 根目录。
+	2.	文件大小限制： ConfigMap 有大小限制，单个 ConfigMap 的数据大小不能超过 1MB。
+	3.	挂载权限： 挂载的文件默认只读。如果需要修改文件，请使用 emptyDir 或其他机制。
+
+完整 Helm Chart 示例
+
+templates/configmap.yaml
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: my-configmap
+data:
+  {{- range $path, $file := .Files.Glob "config/*" }}
+  {{ $path | base }}: |
+    {{ $file | nindent 4 }}
+  {{- end }}
+
+templates/deployment.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+      - name: my-container
+        image: nginx
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/my-config
+      volumes:
+      - name: config-volume
+        configMap:
+          name: my-configmap
+
+部署完成后，容器中的 /etc/my-config/ 目录会包含 file1.txt、`file2
