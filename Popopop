@@ -1,0 +1,124 @@
+如果你使用 Helm 来部署 Kubernetes 应用程序（如 Dremio），那么要将 Secret 或 ConfigMap 的创建和挂载配置集成到 Helm Chart 中，你需要在 Helm Chart 的模板文件中进行相应的改动。以下是具体步骤：
+
+1. 在 Helm Chart 中添加 Secret 或 ConfigMap
+
+Helm Chart 通常包含一个 templates 目录，你可以在其中添加一个新的模板文件（如 secrets.yaml 或 configmap.yaml）来定义 Secret 或 ConfigMap。
+
+添加 Secret 的模板
+
+新建或修改文件 templates/secrets.yaml：
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Release.Name }}-mongodb-certificates
+  namespace: {{ .Release.Namespace }}
+type: Opaque
+data:
+  ca.crt: {{ .Files.Get "certificates/ca.crt" | b64enc }}
+  client-cert.pem: {{ .Files.Get "certificates/client-cert.pem" | b64enc }}
+  client-key.pem: {{ .Files.Get "certificates/client-key.pem" | b64enc }}
+
+	•	解释：
+	•	{{ .Files.Get }} 用于从 files 目录中读取文件内容。
+	•	| b64enc 将文件内容转换为 Base64 编码，这是 Kubernetes Secret 所需的格式。
+	•	将你的证书文件（ca.crt、client-cert.pem、client-key.pem）放到 Helm Chart 的 files/certificates 目录下。
+
+添加 ConfigMap 的模板
+
+如果你只需要存储非敏感信息（如 CA 证书），可以新建或修改文件 templates/configmap.yaml：
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-mongodb-certificates
+  namespace: {{ .Release.Namespace }}
+data:
+  ca.crt: |
+    {{ .Files.Get "certificates/ca.crt" | indent 4 }}
+
+	•	解释：
+	•	{{ .Files.Get }} 从 files/certificates/ca.crt 文件中读取内容并嵌入到 ConfigMap。
+	•	| indent 4 确保 YAML 格式正确。
+
+2. 将 Secret 或 ConfigMap 挂载到 Pod
+
+编辑 templates/deployment.yaml 文件，修改 Dremio 的容器定义，添加挂载配置。
+
+挂载 Secret
+
+在 Deployment 的 volumes 和 volumeMounts 中添加：
+
+volumes:
+  - name: mongodb-certificates
+    secret:
+      secretName: {{ .Release.Name }}-mongodb-certificates
+
+volumeMounts:
+  - name: mongodb-certificates
+    mountPath: /etc/dremio/certificates
+    readOnly: true
+
+挂载 ConfigMap
+
+如果你使用 ConfigMap，则改为：
+
+volumes:
+  - name: mongodb-certificates
+    configMap:
+      name: {{ .Release.Name }}-mongodb-certificates
+
+volumeMounts:
+  - name: mongodb-certificates
+    mountPath: /etc/dremio/certificates
+    readOnly: true
+
+3. 更新 values.yaml
+
+为了让证书的路径和配置更加灵活，可以在 values.yaml 中添加相关配置项：
+
+mongodb:
+  certificates:
+    enabled: true
+    secretName: mongodb-certificates
+    files:
+      ca: "certificates/ca.crt"
+      clientCert: "certificates/client-cert.pem"
+      clientKey: "certificates/client-key.pem"
+
+然后在模板中通过 values 动态引用这些配置：
+	•	在 secrets.yaml 中：
+
+ca.crt: {{ .Files.Get .Values.mongodb.certificates.files.ca | b64enc }}
+client-cert.pem: {{ .Files.Get .Values.mongodb.certificates.files.clientCert | b64enc }}
+client-key.pem: {{ .Files.Get .Values.mongodb.certificates.files.clientKey | b64enc }}
+
+4. 部署 Helm Chart
+	1.	确保你的证书文件位于 Chart 的 files/certificates 目录中。
+	2.	使用 Helm 部署或升级：
+
+helm upgrade --install dremio ./dremio-chart -f values.yaml
+
+
+	3.	验证部署是否成功：
+	•	检查 Secret 或 ConfigMap 是否创建：
+
+kubectl get secret dremio-mongodb-certificates -n <namespace>
+kubectl get configmap dremio-mongodb-certificates -n <namespace>
+
+
+	•	确认 Pod 是否挂载了证书：
+
+kubectl exec -it <dremio-pod> -- ls /etc/dremio/certificates
+
+总结
+	1.	定义 Secret 或 ConfigMap：
+	•	在 Helm Chart 的模板文件中，创建存储证书的 secrets.yaml 或 configmap.yaml。
+	2.	挂载证书到 Pod：
+	•	修改 deployment.yaml，将证书挂载到容器中。
+	3.	灵活配置：
+	•	在 values.yaml 中添加路径配置，方便调整。
+	4.	部署和验证：
+	•	使用 Helm 部署 Chart，验证证书已正确挂载。
+
+这样，你就可以在 Kubernetes 集群中通过 Helm 管理 Dremio 的 MongoDB TLS 配置了。
