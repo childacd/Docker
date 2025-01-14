@@ -1,0 +1,149 @@
+完整步骤：Java 程序连接 MongoDB (SRV) 并验证自定义 trustStore
+
+1. 环境准备
+	•	安装 JDK:
+	•	确保已安装 JDK（推荐 JDK 8 或以上）。
+	•	验证：
+
+java -version
+
+
+	•	下载 MongoDB 驱动依赖:
+	•	使用 Maven 或直接下载驱动 .jar 文件。
+
+2. 下载 MongoDB 驱动
+	•	使用 Maven 管理依赖:
+在 pom.xml 中添加以下依赖：
+
+<dependencies>
+    <dependency>
+        <groupId>org.mongodb</groupId>
+        <artifactId>mongodb-driver-sync</artifactId>
+        <version>4.10.2</version>
+    </dependency>
+</dependencies>
+
+下载依赖命令：
+
+mvn clean install
+
+
+	•	手动下载驱动文件:
+	•	从 Maven Central Repository 下载 mongodb-driver-sync-4.10.2.jar。
+	•	确保驱动文件与程序放在同一个目录下。
+
+3. 创建或配置信任库（trustStore）
+	1.	准备自签发根证书文件（.crt 或 .pem 格式）。
+	•	如果根证书存储在 root-ca.crt 文件中。
+	2.	将证书导入 JKS 格式的 trustStore:
+
+keytool -importcert -trustcacerts -alias mycert -file root-ca.crt -keystore mytruststore.jks -storetype JKS
+
+	•	参数说明:
+	•	-file: 根证书文件路径。
+	•	-keystore: 输出信任库路径（如 mytruststore.jks）。
+	•	-storetype: 指定信任库格式（JKS）。
+	•	示例:
+
+keytool -importcert -trustcacerts -alias mycert -file /path/to/root-ca.crt -keystore /path/to/mytruststore.jks -storetype JKS
+
+
+	3.	验证 trustStore 内容:
+
+keytool -list -keystore /path/to/mytruststore.jks
+
+	•	确认信任库中包含根证书。
+
+4. 编写 Java 程序
+
+将以下代码保存为 MongoDBSRVSSLTest.java：
+
+import com.mongodb.ConnectionString;
+import com.mongodb.MongoClientSettings;
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
+import com.mongodb.client.MongoDatabase;
+
+import javax.net.ssl.SSLContext;
+import java.io.FileInputStream;
+import java.security.KeyStore;
+import javax.net.ssl.TrustManagerFactory;
+
+public class MongoDBSRVSSLTest {
+    public static void main(String[] args) {
+        try {
+            // Path to your trustStore and its password
+            String trustStorePath = "/path/to/your/mytruststore.jks"; // 替换为您的 trustStore 路径
+            String trustStorePassword = "yourTrustStorePassword"; // 替换为您的 trustStore 密码
+
+            // Load the trustStore
+            KeyStore trustStore = KeyStore.getInstance("JKS");
+            try (FileInputStream trustStoreStream = new FileInputStream(trustStorePath)) {
+                trustStore.load(trustStoreStream, trustStorePassword.toCharArray());
+            }
+
+            // Initialize TrustManagerFactory with the trustStore
+            TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            tmf.init(trustStore);
+
+            // Create SSLContext with the trustStore
+            SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, tmf.getTrustManagers(), null);
+
+            // Configure MongoDB SRV connection string
+            String connectionString = "mongodb+srv://<username>:<password>@<cluster-url>/test?retryWrites=true&w=majority";
+
+            // Apply SSL context and build MongoClientSettings
+            MongoClientSettings settings = MongoClientSettings.builder()
+                    .applyConnectionString(new ConnectionString(connectionString))
+                    .applyToSslSettings(builder -> builder.enabled(true).context(sslContext))
+                    .build();
+
+            // Connect to MongoDB
+            try (MongoClient mongoClient = MongoClients.create(settings)) {
+                MongoDatabase database = mongoClient.getDatabase("test");
+                System.out.println("Connected to MongoDB successfully. Databases: ");
+                for (String dbName : mongoClient.listDatabaseNames()) {
+                    System.out.println(" - " + dbName);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to connect to MongoDB: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+}
+
+5. 修改程序中的配置
+	•	替换以下值：
+	•	trustStorePath: 您的 mytruststore.jks 文件路径。
+	•	trustStorePassword: 您的 trustStore 密码。
+	•	<username>: MongoDB 用户名。
+	•	<password>: MongoDB 密码。
+	•	<cluster-url>: MongoDB 的 SRV 地址，例如 cluster0.mongodb.net。
+
+6. 编译和运行程序
+	1.	编译代码:
+
+javac -cp mongodb-driver-sync-4.10.2.jar MongoDBSRVSSLTest.java
+
+
+	2.	运行程序:
+
+java -cp .:mongodb-driver-sync-4.10.2.jar MongoDBSRVSSLTest
+
+7. 验证连接结果
+	•	成功连接时输出:
+
+Connected to MongoDB successfully. Databases: 
+ - admin
+ - local
+ - myDatabase
+
+
+	•	失败时输出:
+如果 trustStore 配置不正确，可能出现以下错误：
+
+javax.net.ssl.SSLHandshakeException: PKIX path building failed: unable to find valid certification path to requested target
+
+通过上述步骤，您可以完整验证您的 trustStore 是否正确配置并成功连接到 MongoDB。
