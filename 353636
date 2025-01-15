@@ -1,0 +1,72 @@
+从图片中可以看到，pyiceberg 在构建 wheels 时出错，提示缺少 pyproject.toml 相关的工具，这通常是因为 setuptools、wheel 或其他构建工具未正确安装或版本太旧。
+
+解决方法
+
+1. 升级 pip、setuptools 和 wheel
+
+确保你的构建工具是最新的，运行以下命令：
+
+python3 -m pip install --upgrade pip setuptools wheel
+
+2. 安装 pyproject.toml 相关工具
+
+由于 pyiceberg 依赖现代的 pyproject.toml 格式，需要安装支持它的工具：
+
+python3 -m pip install --upgrade build
+
+3. 强制重新安装 pyiceberg
+
+清除缓存并强制重新安装：
+
+python3 -m pip install --no-cache-dir pyiceberg
+
+4. 安装系统级构建依赖
+
+某些 Python 包需要依赖系统级工具，确保相关的依赖已安装：
+	•	对于 Ubuntu/Debian：
+
+sudo apt update
+sudo apt install build-essential libssl-dev libffi-dev python3-dev zlib1g-dev
+
+
+	•	对于 CentOS/RHEL：
+
+sudo yum groupinstall "Development Tools"
+sudo yum install gcc libffi-devel python3-devel openssl-devel zlib-devel
+
+5. 手动构建 wheels 文件
+
+如果仍然失败，可以尝试手动构建 pyiceberg 的 wheels 文件：
+	1.	克隆仓库：
+
+git clone https://github.com/apache/iceberg.git
+cd iceberg/python
+
+
+	2.	构建 wheels：
+
+python3 -m pip install build
+python3 -m build
+
+
+	3.	安装生成的 wheels 文件：
+
+python3 -m pip install dist/pyiceberg-*.whl
+
+6. 使用虚拟环境隔离环境
+
+为了避免环境冲突，建议使用虚拟环境进行安装：
+
+python3 -m venv myenv
+source myenv/bin/activate
+pip install pyiceberg
+
+7. 检查 Python 版本
+
+确保你的 Python 版本为 3.7 及以上。运行以下命令检查版本：
+
+python3 --version
+
+如果版本过低，请升级 Python。
+
+以上方法应该可以解决 pyiceberg 无法安装的问题。如果问题仍然存在，请提供最新的错误信息，我会进一步帮你排查！
