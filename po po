@@ -1,0 +1,2 @@
+You can use it in a non-production environment for a while first, and then if everything seems fine, you can use it in the production environment. Basically, you can choose a date that is further away from the release to merge, so this way, it ensures that the pipeline has run without issues at least in the non-production environment.
+The first run might throw some errors, as it will validate the output of your Terraform plan. It may report some issues, and you can modify your configuration based on the Jenkins log output. This is where the OPA Engine comes into play.
