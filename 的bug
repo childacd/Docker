@@ -1,0 +1,108 @@
+为了打印更多信息以帮助调试问题，您可以采取以下几种方法：
+
+1. 启用详细日志输出
+
+在调用 pyiceberg 方法时，可以启用 Python 的日志记录模块 (logging) 来获取更多的调试信息。通过设置日志级别为 DEBUG，您可以获取更多关于执行流程的详细信息。
+
+示例代码：
+
+import logging
+
+# 设置日志级别为 DEBUG
+logging.basicConfig(level=logging.DEBUG)
+
+from pyiceberg import Catalog
+from pyiceberg.catalog import HiveCatalog
+
+# 创建 HiveCatalog 并确保详细日志信息
+catalog = HiveCatalog(
+    uri="thrift://localhost:9001",  # 确保这个 URI 指向 Hive Metastore
+    catalog_name="hive",  # 使用默认的 Hive catalog 名称
+    properties={
+        "warehouse": "s3a://your-bucket-name/warehouse",  # S3 路径
+        "s3.endpoint": "https://s3.amazonaws.com",  # S3 endpoint
+    }
+)
+
+# 列出命名空间并打印
+print("Namespaces:", catalog.list_namespaces())
+
+2. 检查和打印出异常的详细堆栈信息
+
+通过 try-except 块捕获异常，并打印出详细的异常信息。这样可以帮助您查看出错的代码位置和原因。
+
+示例代码：
+
+try:
+    # 创建 HiveCatalog
+    catalog = HiveCatalog(
+        uri="thrift://localhost:9001",  # 确保这个 URI 指向 Hive Metastore
+        catalog_name="hive",  # 默认的 Hive catalog 名称
+        properties={
+            "warehouse": "s3a://your-bucket-name/warehouse",  # 设置 S3 仓库路径
+            "s3.endpoint": "https://s3.amazonaws.com",  # 设置 S3 endpoint
+        }
+    )
+    
+    # 创建命名空间
+    catalog.create_namespace("test")
+
+except Exception as e:
+    # 捕获异常并打印堆栈信息
+    import traceback
+    traceback.print_exc()  # 打印详细的异常堆栈
+
+这样，当出现异常时，您将看到完整的堆栈跟踪信息，帮助您更精确地定位错误的根源。
+
+3. 调试 pyiceberg 方法
+
+您还可以通过手动打印出方法执行的参数，检查它们是否正确传递。例如，打印出连接 Hive Metastore 的 URI、属性或方法调用的返回值：
+
+示例代码：
+
+print("Connecting to Hive Metastore with URI:", "thrift://localhost:9001")
+print("Using catalog name:", "hive")
+print("Properties:", {
+    "warehouse": "s3a://your-bucket-name/warehouse",  # 确保路径正确
+    "s3.endpoint": "https://s3.amazonaws.com",  # 确保端点正确
+})
+
+# 调用并打印命名空间列表
+namespaces = catalog.list_namespaces()
+print("Available namespaces:", namespaces)
+
+4. 调试 AWS S3 配置
+
+如果你正在使用 S3 存储，确保 S3 配置正确并打印相关信息。可以通过日志输出检查是否正确配置了 AWS_ACCESS_KEY_ID 和 AWS_SECRET_ACCESS_KEY 环境变量，或者使用 aws sts get-caller-identity 来验证凭证是否有效。
+
+import os
+
+# 打印 AWS 配置信息
+print("AWS Access Key:", os.environ.get("AWS_ACCESS_KEY_ID"))
+print("AWS Secret Key:", os.environ.get("AWS_SECRET_ACCESS_KEY"))
+
+# 验证 AWS 凭证
+os.system("aws sts get-caller-identity")
+
+5. 调试 Metastore 连接
+
+如果问题出在 Hive Metastore 的连接，可以直接尝试连接 Hive Metastore 服务并检查是否正常运行。
+
+import thrift
+from pyiceberg.catalog.hive import ThriftHiveMetastoreClient
+
+# 尝试连接 Hive Metastore
+try:
+    client = ThriftHiveMetastoreClient("thrift://localhost:9001")
+    client.open()
+    print("Connected to Hive Metastore")
+except thrift.transport.TTransportException as e:
+    print("Failed to connect to Hive Metastore:", e)
+
+总结：
+	•	使用 logging 模块启用调试日志。
+	•	捕获并打印异常信息，查看详细的堆栈跟踪。
+	•	手动检查和打印执行的参数、连接信息以及返回值。
+	•	调试 S3 配置和 Hive Metastore 连接，确保它们的设置正确。
+
+这些方法将帮助您获取更多的信息，从而更好地定位问题所在。如果有更多的错误信息或日志输出，可以提供给我，我将帮助进一步分析。
