@@ -1,0 +1,14 @@
+<property>
+    <name>fs.s3a.impl</name>
+    <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
+</property>
+
+<property>
+    <name>fs.s3a.endpoint</name>
+    <value>s3.amazonaws.com</value>
+</property>
+
+<property>
+    <name>fs.s3a.aws.credentials.provider</name>
+    <value>org.apache.hadoop.fs.s3a.auth.AssumedRoleCredentialProvider</value>
+</property>
