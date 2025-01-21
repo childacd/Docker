@@ -1,0 +1,25 @@
+<configuration>
+    <property>
+        <name>fs.s3.endpoint</name>
+        <value>s3.amazonaws.com</value>
+        <description>Use AWS S3 endpoint</description>
+    </property>
+
+    <property>
+        <name>fs.s3.access.key</name>
+        <value>your-aws-access-key</value>
+        <description>AWS S3 access key</description>
+    </property>
+
+    <property>
+        <name>fs.s3.secret.key</name>
+        <value>your-aws-secret-key</value>
+        <description>AWS S3 secret key</description>
+    </property>
+
+    <property>
+        <name>hive.metastore.warehouse.dir</name>
+        <value>s3a://your-bucket-name/warehouse-hms</value>
+        <description>For HMS warehouse dir cannot be top level bucket directory</description>
+    </property>
+</configuration>
