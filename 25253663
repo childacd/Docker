@@ -1,0 +1,11 @@
+from pyiceberg import Catalog
+from pyiceberg.catalog import HiveCatalog
+
+catalog = HiveCatalog(
+    uri="thrift://localhost:9001",  # 确保这个 URI 指向你的 Hive Metastore
+    catalog_name="hive",  # 使用默认的 Hive catalog 名称
+    properties={
+        "warehouse": "s3a://your-bucket-name/warehouse",  # 如果你使用 S3 存储，确保路径正确
+        "s3.endpoint": "https://s3.amazonaws.com",  # 设置 S3 endpoint
+    }
+)
