@@ -1,0 +1,7 @@
+Has anyone encountered this issue?
+
+We are running an ALTER PDS statement, and while it mostly succeeds, about one in every ten to fifteen executions fails with the same error: “invalid Parquet footer” for a specific file. However, this file exists in the MinIO bucket, and its last modified date in MinIO is from last November, meaning it hasn’t changed for over two months.
+
+But in the past few days, in our stage environment, this issue has been happening intermittently. Could this be due to inconsistent caching across MinIO nodes, or is it a caching issue on the Dremio executor cluster?
+
+Just throwing this out to the team—has anyone seen this before or know how to fix it?
