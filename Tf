@@ -1,0 +1,79 @@
+#!/bin/bash
+
+# 定义日志文件
+LOG_FILE="terraform_destroy.log"
+
+# 检查 Terraform 是否已安装
+if ! command -v terraform &> /dev/null; then
+    echo "Terraform 未安装，请安装后重试。"
+    exit 1
+fi
+
+# 函数：更新 backend.tf 文件
+update_backend() {
+    local state_file=$1
+    cat > backend.tf <<EOF
+terraform {
+  backend "s3" {
+    key = "${state_file}"
+    # 你可以根据实际情况填充其他 backend 配置，例如 bucket、region 等
+  }
+}
+EOF
+}
+
+# 函数：执行 Terraform destroy 或 dry run
+process_state_file() {
+    local state_file=$1
+    local mode=$2
+
+    echo "正在处理 state file: ${state_file}..."
+    update_backend "${state_file}"
+
+    # 初始化 Terraform
+    terraform init -reconfigure > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo "初始化失败，跳过 ${state_file}"
+        return 1
+    fi
+
+    if [ "${mode}" == "dry-run" ]; then
+        # 运行 terraform plan 并保存输出
+        terraform plan -destroy -out=plan.out
+        echo "Dry run 完成：${state_file}" >> "${LOG_FILE}"
+    elif [ "${mode}" == "destroy" ]; then
+        # 运行 terraform destroy
+        terraform destroy -auto-approve
+        if [ $? -eq 0 ]; then
+            echo "已成功删除：${state_file}" >> "${LOG_FILE}"
+        else
+            echo "删除失败：${state_file}" >> "${LOG_FILE}"
+        fi
+    else
+        echo "未知模式：${mode}"
+        exit 1
+    fi
+}
+
+# 主逻辑
+main() {
+    local mode=$1
+    if [ "${mode}" != "dry-run" ] && [ "${mode}" != "destroy" ]; then
+        echo "用法：$0 <dry-run|destroy> <state_file_list>"
+        exit 1
+    fi
+
+    # 清空日志文件
+    > "${LOG_FILE}"
+
+    # 依次处理每个 state file
+    shift
+    for state_file in "$@"; do
+        process_state_file "${state_file}" "${mode}"
+    done
+
+    echo "操作已完成，详细信息请查看 ${LOG_FILE}"
+}
+
+# 调用主函数
+main "$@"
