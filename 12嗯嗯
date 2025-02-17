@@ -1,0 +1,74 @@
+在大数据生态系统中，Map Avro file as Hive external table（将Avro文件映射为Hive外部表）意味着将Avro格式的文件作为Hive中的外部表来进行查询，而不是将数据复制到Hive的内部存储中。外部表的好处是它不直接存储数据，而是通过指定文件的位置（通常是HDFS、S3等存储系统），使得Hive可以查询这些数据。这个方法通常用于读取不同格式的数据文件（例如Avro、Parquet、ORC等）。
+
+配置步骤：
+
+以下是将Avro文件作为Hive外部表进行配置的常见步骤（假设你使用的是Hive和Hadoop生态环境）：
+
+1. 确保Hive支持Avro格式
+	•	在Hive中，首先需要确保你使用的Hive版本支持Avro格式。通常较新的Hive版本会内建支持Avro。
+	•	需要确保Hive的avro-serde（Avro序列化/反序列化库）已经配置在Hive中。你可以通过在Hive配置文件中添加以下依赖来确保这一点：
+
+<property>
+  <name>hive.aux.jars.path</name>
+  <value>path_to_avro-serde.jar</value>
+</property>
+
+
+
+2. 创建Hive外部表
+
+在Hive中，你可以通过CREATE EXTERNAL TABLE语句来创建外部表。对于Avro文件，表结构需要与Avro文件的schema匹配。
+	•	示例：
+假设你的Avro文件存储在HDFS或S3中，以下是如何创建一个Hive外部表的示例：
+
+CREATE EXTERNAL TABLE your_avro_table (
+    field1 STRING,
+    field2 INT,
+    field3 DOUBLE
+)
+STORED AS AVRO
+LOCATION 'hdfs://your_hdfs_path_to_avro_file_or_s3_path';
+
+解释：
+	•	your_avro_table：这是你想要创建的Hive外部表的名称。
+	•	field1, field2, field3：这些是与Avro文件中对应字段的类型相匹配的列。
+	•	STORED AS AVRO：这告诉Hive文件是Avro格式。
+	•	LOCATION：指定Avro文件所在的位置，可以是HDFS路径、S3路径等。
+
+3. 确认Avro文件的Schema
+
+Hive外部表的字段必须与Avro文件的Schema一致。如果你没有Avro文件的Schema，可以使用工具（例如avro-tools）来查看Avro文件的结构。
+	•	使用avro-tools查看Avro文件的Schema：
+
+java -jar avro-tools-1.8.2.jar getschema your_avro_file.avro
+
+
+
+4. 查询Avro文件数据
+
+在Hive中创建了外部表后，你可以使用HiveQL进行查询。例如：
+
+SELECT * FROM your_avro_table LIMIT 10;
+
+在Dremio中使用Hive外部表
+
+如果你是在Dremio中使用外部表，可以连接Dremio到Hive，并通过以下步骤使用Avro文件：
+	1.	在Dremio中配置一个Hive数据源，连接到Hive。
+	2.	使用Dremio SQL来查询Hive中的外部表。
+示例：
+
+SELECT * FROM hive_table WHERE field1 = 'value';
+
+
+
+小贴士：
+	•	在使用Hive外部表时，外部表的数据不会被Hive管理，它只是指向数据所在的位置，因此删除Hive外部表不会删除数据文件。
+	•	配置文件路径时，请确保路径正确且有权限访问。
+
+总结：
+	1.	Avro文件：首先确保Hive支持Avro格式。
+	2.	创建外部表：使用CREATE EXTERNAL TABLE语句指定Avro文件的结构和位置。
+	3.	确认Schema匹配：Hive表的字段必须与Avro文件的Schema匹配。
+	4.	查询数据：创建外部表后，使用HiveQL查询Avro文件数据。
+
+如果你有特定的配置或问题，随时告诉我，我可以帮你更详细地分析和调整！
