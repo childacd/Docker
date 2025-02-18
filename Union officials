@@ -1,0 +1,32 @@
+def convert_avro_type_to_arrow(field_type):
+    """Convert Avro field type to PyArrow type"""
+    if isinstance(field_type, dict):  # Complex types, such as record
+        if field_type.get('type') == 'record':
+            # For record types, recursively handle its internal fields
+            return pa.struct([
+                pa.field(f['name'], convert_avro_type_to_arrow(f['type']))
+                for f in field_type['fields']
+            ])
+        elif field_type.get('type') == 'array':
+            # For array types, handle its item types
+            item_type = field_type.get('items')
+            return pa.list_(convert_avro_type_to_arrow(item_type))
+    elif isinstance(field_type, list):  # Union types
+        return pa.union([convert_avro_type_to_arrow(t) for t in field_type])
+    elif isinstance(field_type, str):  # Primitive types
+        if field_type == 'string':
+            return pa.string()
+        elif field_type == 'int':
+            return pa.int32()  # Convert int to int32
+        elif field_type == 'long':
+            return pa.int64()  # Convert long to int64
+        elif field_type == 'float':
+            return pa.float32()
+        elif field_type == 'double':
+            return pa.float64()
+        elif field_type == 'boolean':
+            return pa.bool_()
+        else:
+            return pa.string()  # Default conversion to string
+    else:
+        return pa.string()  # Default conversion to string
