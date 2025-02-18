@@ -1,0 +1,141 @@
+好的！以下是两个Python脚本，分别用于将Avro文件转换为Parquet文件和将Avro文件转换为Iceberg表。与此同时，我还会提供如何调用这些脚本的示例。
+
+1. 将Avro文件转换为Parquet文件（Python）
+
+要将Avro文件转换为Parquet文件，可以使用fastavro（用于读取Avro）和pyarrow（用于生成Parquet文件）库。
+
+安装必要的库：
+
+pip install fastavro pyarrow
+
+脚本：avro_to_parquet.py
+
+import fastavro
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+def avro_to_parquet(avro_file_path, parquet_file_path):
+    # 打开Avro文件
+    with open(avro_file_path, 'rb') as avro_file:
+        reader = fastavro.reader(avro_file)
+        schema = reader.schema
+
+        # 将Avro文件的Schema转换为Arrow的Schema
+        arrow_schema = pa.schema([
+            pa.field(field['name'], pa.string() if field['type'] == 'string' else pa.int64())
+            for field in schema['fields']
+        ])
+
+        # 将Avro记录转换为Arrow表
+        records = [record for record in reader]
+        arrow_table = pa.Table.from_pandas(pd.DataFrame(records), schema=arrow_schema)
+
+        # 将Arrow表写入Parquet文件
+        pq.write_table(arrow_table, parquet_file_path)
+
+    print(f"Avro file {avro_file_path} has been successfully converted to Parquet at {parquet_file_path}")
+
+# 示例调用
+if __name__ == "__main__":
+    avro_file = "input.avro"  # 输入Avro文件
+    parquet_file = "output.parquet"  # 输出Parquet文件
+    avro_to_parquet(avro_file, parquet_file)
+
+如何调用：
+
+python avro_to_parquet.py
+
+这个脚本会读取input.avro文件，并将它转换为output.parquet。
+
+2. 将Avro文件转换为Iceberg表（Python）
+
+要将Avro文件转换为Iceberg表，我们需要使用Apache Iceberg的Python API（pyiceberg），这个库的支持目前仍然在开发中，因此一个更常见的解决方案是使用Spark来处理Avro到Iceberg的转换。
+
+安装必要的库：
+
+pip install pyiceberg
+
+脚本：avro_to_iceberg.py
+
+from pyiceberg import IcebergTable
+import fastavro
+
+def avro_to_iceberg(avro_file_path, iceberg_table_uri):
+    # 打开Avro文件
+    with open(avro_file_path, 'rb') as avro_file:
+        reader = fastavro.reader(avro_file)
+        schema = reader.schema
+
+        # 创建Iceberg表
+        iceberg_table = IcebergTable(iceberg_table_uri)
+
+        # 将Avro数据逐行插入到Iceberg表中
+        for record in reader:
+            iceberg_table.append(record)
+
+    print(f"Avro file {avro_file_path} has been successfully converted to Iceberg table at {iceberg_table_uri}")
+
+# 示例调用
+if __name__ == "__main__":
+    avro_file = "input.avro"  # 输入Avro文件
+    iceberg_table_uri = "s3://your-bucket/iceberg_table"  # Iceberg表的URI（可以是S3、HDFS等）
+    avro_to_iceberg(avro_file, iceberg_table_uri)
+
+如何调用：
+
+python avro_to_iceberg.py
+
+这个脚本会将input.avro文件中的数据转换并写入指定URI的Iceberg表中。
+
+3. 其他语言
+
+除了Python，Java和Scala是更常用的语言来处理Avro、Parquet和Iceberg的转换，因为它们是这些技术的原生语言，提供了直接的支持。
+	•	Java：
+	•	使用Apache Avro和Apache Parquet的Java库，可以非常方便地将Avro文件转换为Parquet。
+	•	使用Apache Iceberg的Java库，支持直接将Avro文件转换为Iceberg表。
+	•	Scala：
+	•	Scala在Apache Spark中广泛使用，Spark提供了对Avro、Parquet和Iceberg的强大支持。你可以使用Spark的Scala API非常方便地实现Avro到Parquet的转换，或者将Avro数据写入Iceberg表。
+
+4. 使用Apache Spark（通用解决方案）
+
+无论是Avro到Parquet，还是Avro到Iceberg，Apache Spark都是一个非常强大的工具。你可以使用Spark的SQL接口或者DataFrame API来轻松完成这些转换。
+
+Spark 示例：Avro到Parquet
+
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder \
+    .appName("Avro to Parquet") \
+    .getOrCreate()
+
+# 读取Avro文件
+df = spark.read.format("avro").load("s3://path_to_avro_file")
+
+# 将数据写入Parquet文件
+df.write.parquet("s3://path_to_output_parquet_file")
+
+Spark 示例：Avro到Iceberg
+
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder \
+    .appName("Avro to Iceberg") \
+    .config("spark.sql.catalog.spark_catalog", "org.apache.iceberg.spark.SparkSessionCatalog") \
+    .config("spark.sql.catalog.spark_catalog.type", "hive") \
+    .getOrCreate()
+
+# 读取Avro文件
+df = spark.read.format("avro").load("s3://path_to_avro_file")
+
+# 将数据写入Iceberg表
+df.write.format("iceberg").mode("overwrite").save("s3://path_to_iceberg_table")
+
+总结：
+	•	Python脚本：
+	•	将Avro文件转换为Parquet：avro_to_parquet.py。
+	•	将Avro文件转换为Iceberg表：avro_to_iceberg.py（这依赖于Iceberg的Python库）。
+	•	其他语言：
+	•	Java和Scala是处理这些格式转换的首选语言，尤其是对于Apache Iceberg的操作。
+	•	推荐的通用方案：使用Apache Spark，它为处理Avro、Parquet、Iceberg提供了强大的支持，特别是在分布式处理大规模数据时。
+
+这些脚本的调用方式是直接通过命令行运行脚本。希望这些内容对你有帮助！如果你遇到任何问题或者需要进一步的帮助，随时告诉我！
