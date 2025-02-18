@@ -1,0 +1,14 @@
+from pyspark.sql import SparkSession
+
+# 创建 SparkSession
+spark = SparkSession.builder \
+    .appName("Avro to Parquet") \
+    .getOrCreate()
+
+# 读取 Avro 文件
+df = spark.read.format("avro").load("path_to_input.avro")
+
+# 将数据写入 Parquet 文件
+df.write.parquet("path_to_output.parquet")
+
+print("Avro file has been successfully converted to Parquet.")
