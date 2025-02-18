@@ -1,0 +1,172 @@
+好的！以下是Java版本的代码，用于将Avro文件转换为Parquet文件以及将Avro文件转换为Iceberg表的脚本。你可以通过运行这些Java程序来进行格式转换。
+
+1. 将Avro文件转换为Parquet文件（Java）
+
+安装依赖
+
+首先，确保你已经在项目中添加了Avro和Parquet的依赖，通常通过Maven来管理。
+
+<dependencies>
+    <!-- Apache Avro -->
+    <dependency>
+        <groupId>org.apache.avro</groupId>
+        <artifactId>avro</artifactId>
+        <version>1.10.2</version>
+    </dependency>
+
+    <!-- Apache Parquet -->
+    <dependency>
+        <groupId>org.apache.parquet</groupId>
+        <artifactId>parquet-avro</artifactId>
+        <version>1.12.0</version>
+    </dependency>
+
+    <!-- Apache Parquet Avro -->
+    <dependency>
+        <groupId>org.apache.parquet</groupId>
+        <artifactId>parquet-avro</artifactId>
+        <version>1.12.0</version>
+    </dependency>
+</dependencies>
+
+Java脚本：AvroToParquet.java
+
+import org.apache.avro.Schema;
+import org.apache.avro.file.DataFileReader;
+import org.apache.avro.generic.GenericDatumReader;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.parquet.avro.AvroParquetWriter;
+import org.apache.parquet.hadoop.metadata.CompressionCodecName;
+import org.apache.parquet.io.OutputFile;
+import org.apache.parquet.hadoop.util.HadoopOutputFile;
+import org.apache.hadoop.fs.Path;
+
+import java.io.File;
+import java.io.IOException;
+
+public class AvroToParquet {
+    public static void main(String[] args) throws IOException {
+        String avroFilePath = "input.avro";  // 输入Avro文件
+        String parquetFilePath = "output.parquet";  // 输出Parquet文件
+
+        // 创建一个Avro文件读取器
+        File avroFile = new File(avroFilePath);
+        Schema schema = new Schema.Parser().parse(avroFile);
+        GenericDatumReader<GenericRecord> datumReader = new GenericDatumReader<>(schema);
+        DataFileReader<GenericRecord> dataFileReader = new DataFileReader<>(avroFile, datumReader);
+
+        // 定义Parquet的输出路径
+        Path outputPath = new Path(parquetFilePath);
+        OutputFile outputFile = HadoopOutputFile.fromPath(outputPath, new org.apache.hadoop.conf.Configuration());
+
+        // 使用ParquetAvroWriter将Avro转换为Parquet
+        AvroParquetWriter<GenericRecord> writer = AvroParquetWriter
+                .<GenericRecord>builder(outputFile)
+                .withSchema(schema)
+                .withCompressionCodec(CompressionCodecName.SNAPPY)  // 可以选择不同的压缩方式
+                .withRowGroupSize(ParquetWriter.DEFAULT_BLOCK_SIZE)
+                .build();
+
+        // 将每一条Avro记录写入Parquet
+        while (dataFileReader.hasNext()) {
+            GenericRecord record = dataFileReader.next();
+            writer.write(record);
+        }
+
+        // 关闭资源
+        writer.close();
+        dataFileReader.close();
+
+        System.out.println("Avro file has been successfully converted to Parquet.");
+    }
+}
+
+如何调用：
+	1.	将input.avro文件放在项目目录下。
+	2.	通过命令行编译和运行Java代码：
+
+javac AvroToParquet.java
+java AvroToParquet
+
+
+
+这个程序会将input.avro文件转换成output.parquet文件。
+
+2. 将Avro文件转换为Iceberg表（Java）
+
+要将Avro文件转换为Iceberg表，通常是通过Spark与Iceberg的集成。下面是一个使用Apache Spark将Avro数据写入Iceberg表的示例。
+
+安装依赖
+
+确保你的pom.xml包含了Spark和Iceberg的依赖：
+
+<dependencies>
+    <!-- Apache Spark -->
+    <dependency>
+        <groupId>org.apache.spark</groupId>
+        <artifactId>spark-sql_2.12</artifactId>
+        <version>3.1.2</version>
+    </dependency>
+
+    <!-- Apache Iceberg -->
+    <dependency>
+        <groupId>org.apache.iceberg</groupId>
+        <artifactId>iceberg-spark3-runtime</artifactId>
+        <version>0.12.0</version>
+    </dependency>
+
+    <!-- Avro Format for Spark -->
+    <dependency>
+        <groupId>org.apache.spark</groupId>
+        <artifactId>spark-avro_2.12</artifactId>
+        <version>3.1.2</version>
+    </dependency>
+</dependencies>
+
+Java脚本：AvroToIceberg.java
+
+import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SparkSession;
+
+public class AvroToIceberg {
+    public static void main(String[] args) {
+        // 创建SparkSession
+        SparkSession spark = SparkSession.builder()
+                .appName("Avro to Iceberg")
+                .config("spark.sql.catalog.spark_catalog", "org.apache.iceberg.spark.SparkSessionCatalog")
+                .config("spark.sql.catalog.spark_catalog.type", "hive")
+                .config("spark.sql.catalog.spark_catalog.warehouse", "s3://your-bucket/warehouse")
+                .getOrCreate();
+
+        // 读取Avro文件
+        String avroFilePath = "s3://path_to_avro_file";
+        Dataset<Row> avroData = spark.read().format("avro").load(avroFilePath);
+
+        // 将数据写入Iceberg表
+        String icebergTablePath = "s3://your-bucket/iceberg_table";
+        avroData.write()
+                .format("iceberg")
+                .mode("overwrite")  // overwrite、append等
+                .save(icebergTablePath);
+
+        System.out.println("Avro file has been successfully converted to Iceberg table.");
+    }
+}
+
+如何调用：
+	1.	确保你已经配置了Iceberg和Spark的环境，并且已经配置了Iceberg表的路径。
+	2.	编译并运行Java程序：
+
+mvn clean package
+java -cp target/your-jar-file.jar AvroToIceberg
+
+
+
+这个程序会将Avro文件的数据转换并写入指定的Iceberg表中。
+
+总结：
+	•	Avro到Parquet：Java代码通过AvroParquetWriter将Avro文件数据转换为Parquet文件。
+	•	Avro到Iceberg：Java代码通过Spark与Iceberg集成，将Avro数据写入Iceberg表。你需要在Spark中配置Iceberg，并且使用format("iceberg")来写数据。
+
+如果你在运行这些Java脚本时遇到问题或者需要更详细的帮助，随时告诉我！
