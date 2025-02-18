@@ -1,0 +1,50 @@
+import argparse
+import fastavro
+import pyarrow as pa
+import pyarrow.parquet as pq
+import pandas as pd
+
+def avro_to_parquet(avro_file_path, parquet_file_path):
+    with open(avro_file_path, 'rb') as avro_file:
+        reader = fastavro.reader(avro_file)
+        schema = reader.schema
+        
+        # Convert schema into Arrow schema
+        arrow_schema = pa.schema([
+            pa.field(field['name'], pa.string() if field['type'] == 'string' else pa.int64())
+            for field in schema['fields']
+        ])
+
+        # Read records and convert them to pandas DataFrame
+        records = [record for record in reader]
+        df = pd.DataFrame(records, columns=[field['name'] for field in schema['fields']])
+
+        # Clean the data: fill NaN values and convert types
+        df = df.fillna('')  # You can change the default value if needed
+        df = df.convert_dtypes()  # Automatically converts data types to compatible types
+
+        # Handling specific columns with mixed types (e.g., dict or objects)
+        if 'valueArray' in df.columns:
+            df['valueArray'] = df['valueArray'].apply(str)  # Convert dict or mixed data types to string
+
+        # Ensure all values are numeric where applicable
+        df['someNumericColumn'] = pd.to_numeric(df['someNumericColumn'], errors='coerce')  # Convert non-numeric to NaN
+
+        # Convert pandas DataFrame to pyarrow Table
+        arrow_table = pa.Table.from_pandas(df, schema=arrow_schema)
+
+        # Write the Arrow Table to Parquet
+        pq.write_table(arrow_table, parquet_file_path)
+
+    print(f"Avro file {avro_file_path} has been successfully converted to Parquet at {parquet_file_path}")
+
+def main():
+    parser = argparse.ArgumentParser(description="Convert Avro to Parquet")
+    parser.add_argument("avro_file", help="Input Avro file path")
+    parser.add_argument("parquet_file", help="Output Parquet file path")
+    args = parser.parse_args()
+
+    avro_to_parquet(args.avro_file, args.parquet_file)
+
+if __name__ == "__main__":
+    main()
