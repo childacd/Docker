@@ -1,0 +1,20 @@
+import fastavro
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+def avro_to_parquet(avro_file_path, parquet_file_path):
+    with open(avro_file_path, 'rb') as avro_file:
+        reader = fastavro.reader(avro_file)
+        schema = reader.schema
+        
+        # 直接从 Avro 文件读取记录并转换为 PyArrow 表
+        records = [record for record in reader]
+        df = pd.DataFrame(records)
+        
+        # 创建 PyArrow Table
+        table = pa.Table.from_pandas(df)
+        
+        # 输出为 Parquet 文件
+        pq.write_table(table, parquet_file_path)
+
+    print(f"Avro file {avro_file_path} has been successfully converted to Parquet at {parquet_file_path}")
