@@ -1,0 +1,104 @@
+抱歉，接下来是Python版本的更新，我们会支持通过命令行传递输入和输出文件路径。
+
+2. Python版本：支持命令行参数的Avro到Parquet和Avro到Iceberg转换
+
+Avro到Parquet（Python）
+
+在Python中，我们可以使用argparse模块来解析命令行参数。以下是更新后的代码。
+
+Python脚本：avro_to_parquet.py
+
+import argparse
+import fastavro
+import pyarrow as pa
+import pyarrow.parquet as pq
+import pandas as pd
+
+def avro_to_parquet(avro_file_path, parquet_file_path):
+    # 打开Avro文件
+    with open(avro_file_path, 'rb') as avro_file:
+        reader = fastavro.reader(avro_file)
+        schema = reader.schema
+
+        # 将Avro文件的Schema转换为Arrow的Schema
+        arrow_schema = pa.schema([
+            pa.field(field['name'], pa.string() if field['type'] == 'string' else pa.int64())
+            for field in schema['fields']
+        ])
+
+        # 将Avro记录转换为Arrow表
+        records = [record for record in reader]
+        arrow_table = pa.Table.from_pandas(pd.DataFrame(records), schema=arrow_schema)
+
+        # 将Arrow表写入Parquet文件
+        pq.write_table(arrow_table, parquet_file_path)
+
+    print(f"Avro file {avro_file_path} has been successfully converted to Parquet at {parquet_file_path}")
+
+def main():
+    parser = argparse.ArgumentParser(description="Convert Avro to Parquet")
+    parser.add_argument("avro_file", help="Input Avro file path")
+    parser.add_argument("parquet_file", help="Output Parquet file path")
+    args = parser.parse_args()
+
+    avro_to_parquet(args.avro_file, args.parquet_file)
+
+if __name__ == "__main__":
+    main()
+
+如何调用：
+
+python avro_to_parquet.py input.avro output.parquet
+
+这个命令会将input.avro文件转换为output.parquet文件。
+
+Avro到Iceberg（Python）
+
+对于Avro到Iceberg的转换，通常推荐使用Apache Spark，因为Iceberg的Python API还在不断发展，因此使用Spark会更稳定。如果你想要使用Spark来处理Avro到Iceberg的转换，以下是更新的Python脚本。
+
+Python脚本：avro_to_iceberg.py
+
+import argparse
+from pyspark.sql import SparkSession
+
+def avro_to_iceberg(avro_file_path, iceberg_table_uri):
+    # 创建SparkSession
+    spark = SparkSession.builder \
+        .appName("Avro to Iceberg") \
+        .config("spark.sql.catalog.spark_catalog", "org.apache.iceberg.spark.SparkSessionCatalog") \
+        .config("spark.sql.catalog.spark_catalog.type", "hive") \
+        .config("spark.sql.catalog.spark_catalog.warehouse", "s3://your-bucket/warehouse") \
+        .getOrCreate()
+
+    # 读取Avro文件
+    df = spark.read.format("avro").load(avro_file_path)
+
+    # 将数据写入Iceberg表
+    df.write.format("iceberg").mode("overwrite").save(iceberg_table_uri)
+
+    print(f"Avro file {avro_file_path} has been successfully converted to Iceberg table at {iceberg_table_uri}")
+
+def main():
+    parser = argparse.ArgumentParser(description="Convert Avro to Iceberg")
+    parser.add_argument("avro_file", help="Input Avro file path")
+    parser.add_argument("iceberg_table", help="Iceberg table URI")
+    args = parser.parse_args()
+
+    avro_to_iceberg(args.avro_file, args.iceberg_table)
+
+if __name__ == "__main__":
+    main()
+
+如何调用：
+
+python avro_to_iceberg.py input.avro s3://your-bucket/iceberg_table
+
+这个命令会将input.avro文件的数据写入Iceberg表iceberg_table。
+
+总结：
+	1.	Java:
+	•	我们为Java代码添加了命令行参数支持，可以通过java AvroToParquet input.avro output.parquet和java AvroToIceberg input.avro s3://your-bucket/iceberg_table来运行。
+	2.	Python:
+	•	使用argparse库来支持命令行参数，执行时通过命令行传递输入文件和输出路径：python avro_to_parquet.py input.avro output.parquet 和 python avro_to_iceberg.py input.avro s3://your-bucket/iceberg_table。
+
+无论你选择Java还是Python版本，都可以通过命令行灵活地指定输入和输出文件路径。希望这些更新的代码对你有帮助！如果还有任何问题，随时告诉我！
