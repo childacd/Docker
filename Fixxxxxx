@@ -1,0 +1,76 @@
+看起来你的代码是用来将 Avro 文件转换为 Parquet 文件的。在之前的错误中，你遇到了一些类型转换的问题。为了帮助你解决这些问题，我们需要对代码做一些改进，特别是处理数据类型不一致和 NaN 值。
+
+你可以根据以下步骤进行修改：
+
+1. 数据类型处理
+
+需要确保在将 pandas.DataFrame 转换为 pyarrow.Table 时，每一列的数据类型一致。我们还需要确保 NaN 值被处理，避免导致 ArrowInvalid 错误。
+
+2. 修改后的代码
+
+import argparse
+import fastavro
+import pyarrow as pa
+import pyarrow.parquet as pq
+import pandas as pd
+
+def avro_to_parquet(avro_file_path, parquet_file_path):
+    with open(avro_file_path, 'rb') as avro_file:
+        reader = fastavro.reader(avro_file)
+        schema = reader.schema
+        
+        # Convert schema into Arrow schema
+        arrow_schema = pa.schema([
+            pa.field(field['name'], pa.string() if field['type'] == 'string' else pa.int64())
+            for field in schema['fields']
+        ])
+
+        # Read records and convert them to pandas DataFrame
+        records = [record for record in reader]
+        df = pd.DataFrame(records, columns=[field['name'] for field in schema['fields']])
+
+        # Clean the data: fill NaN values and convert types
+        df = df.fillna('')  # You can change the default value if needed
+        df = df.convert_dtypes()  # Automatically converts data types to compatible types
+
+        # Convert pandas DataFrame to pyarrow Table
+        arrow_table = pa.Table.from_pandas(df, schema=arrow_schema)
+
+        # Write the Arrow Table to Parquet
+        pq.write_table(arrow_table, parquet_file_path)
+
+    print(f"Avro file {avro_file_path} has been successfully converted to Parquet at {parquet_file_path}")
+
+def main():
+    parser = argparse.ArgumentParser(description="Convert Avro to Parquet")
+    parser.add_argument("avro_file", help="Input Avro file path")
+    parser.add_argument("parquet_file", help="Output Parquet file path")
+    args = parser.parse_args()
+
+    avro_to_parquet(args.avro_file, args.parquet_file)
+
+if __name__ == "__main__":
+    main()
+
+3. 主要更改：
+	•	fillna('')：填充 NaN 值，这样 pandas DataFrame 中的缺失数据不会导致转换失败。你可以根据需要调整填充的默认值。
+	•	convert_dtypes()：确保 pandas 自动转换列的数据类型，使其与 pyarrow 兼容。
+	•	强制类型转换：对于字段类型的处理，确保在转换为 Arrow 表之前每列的数据类型一致。
+
+4. 如何调用
+
+假设你的文件名是 input.avro，并且你希望将其转换为 output.parquet：
+
+python avro_to_parquet.py input.avro output.parquet
+
+5. 解释
+	•	读取 Avro 文件：使用 fastavro 库读取 Avro 文件并解析其 schema。
+	•	转换为 Arrow schema：将 Avro schema 转换为 PyArrow 的 schema。
+	•	清理数据：填充缺失值，并转换数据类型以确保与 pyarrow 兼容。
+	•	转换并保存 Parquet：使用 pyarrow 将 pandas DataFrame 转换为 Arrow 表，并保存为 Parquet 文件。
+
+6. 运行时错误解决
+
+如果在运行时出现错误（例如 ArrowInvalid 或类型错误），这通常与数据类型不一致有关。使用 fillna() 和 convert_dtypes() 可以确保类型的一致性。如果仍然遇到问题，检查数据是否有不规则的格式或混合类型数据，确保所有列都是一致的类型。
+
+如果你在运行脚本时遇到任何其他问题，随时告诉我！
