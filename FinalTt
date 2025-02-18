@@ -1,0 +1,32 @@
+def convert_avro_type_to_arrow(field_type):
+    """根据字段的 Avro 类型转换为 PyArrow 类型"""
+    if isinstance(field_type, dict):  # 复杂类型，如 record
+        if field_type.get('type') == 'record':
+            # 对于 record 类型，我们递归地处理其内部字段
+            return pa.struct([
+                pa.field(f['name'], convert_avro_type_to_arrow(f['type']))
+                for f in field_type['fields']
+            ])
+        elif field_type.get('type') == 'array':
+            # 对于 array 类型，处理其元素类型
+            item_type = field_type.get('items')
+            return pa.list_(convert_avro_type_to_arrow(item_type))
+    elif isinstance(field_type, list):  # 联合类型 (union)
+        return pa.union([convert_avro_type_to_arrow(t) for t in field_type])
+    elif isinstance(field_type, str):  # 基本类型
+        if field_type == 'string':
+            return pa.string()
+        elif field_type == 'int':
+            return pa.int32()  # 将 int 转换为 int32
+        elif field_type == 'long':
+            return pa.int64()  # 将 long 转换为 int64
+        elif field_type == 'float':
+            return pa.float32()
+        elif field_type == 'double':
+            return pa.float64()
+        elif field_type == 'boolean':
+            return pa.bool_()
+        else:
+            return pa.string()  # 默认转换为字符串
+    else:
+        return pa.string()  # 默认转换为字符串
