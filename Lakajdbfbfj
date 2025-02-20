@@ -1,0 +1,24 @@
+import boto3
+from botocore.exceptions import NoCredentialsError, PartialCredentialsError, EndpointConnectionError
+
+# 创建一个 S3 客户端
+s3_client = boto3.client('s3')
+
+# 指定你想要访问的 S3 存储桶和文件路径
+bucket_name = 'your-bucket-name'
+file_key = 'path/to/your/file/metadata.json'
+
+# 检查 S3 连接和文件是否可访问
+try:
+    # 尝试获取该文件的元数据（也可以用 head_object）
+    response = s3_client.head_object(Bucket=bucket_name, Key=file_key)
+    print(f"成功访问 S3 文件：{file_key}")
+    print(f"文件元数据: {response}")
+except NoCredentialsError:
+    print("AWS 凭证缺失或配置错误")
+except PartialCredentialsError:
+    print("AWS 凭证不完整")
+except EndpointConnectionError:
+    print("无法连接到 AWS S3 服务，可能是网络问题")
+except Exception as e:
+    print(f"发生错误: {e}")
