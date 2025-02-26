@@ -1,0 +1,4 @@
+[target]
+%{ for ip in private_ips ~}
+${ip} ansible_ssh_user=${run_user}
+%{ endfor ~}
