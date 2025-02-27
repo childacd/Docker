@@ -1,0 +1,33 @@
+module "pringle_vm" {
+  count = 3
+  source = "terraform-aws-modules/ec2-instance/aws"
+  version = "~> 3.0"
+
+  # Conditionally add suffix if count > 1
+  name = "${var.stack_name_prefix}-${var.environment}${count.index > 0 ? "-${count.index + 1}" : ""}"
+
+  am1 = var.base_image_id != "" ? var.base_image_id : data.aws_ami.this.id
+  instance_type = var.instance_type
+  vpc_security_group_ids = var.instance_security_groups
+  subnet_id = length(var.subnet_id) > 0 ? var.subnet_id : local.prism_subnet_ids[0]
+
+  root_block_device = [
+    {
+      encrypted = true
+      volume_type = "gp2"
+      volume_size = 12
+    }
+  ]
+
+  tags = merge(local.tags, {
+    Name = "${var.stack_name_prefix}-${var.environment}${count.index > 0 ? "-${count.index + 1}" : ""}"
+    "nomura:host:cname" = "${var.stack_name_prefix}-${var.environment}${count.index > 0 ? "-${count.index + 1}" : ""}"
+  })
+
+  volume_tags = merge(local.tags, {
+    Name = "${var.stack_name_prefix}-${var.environment}${count.index > 0 ? "-${count.index + 1}" : ""}"
+    "nomura:host" = "${var.stack_name_prefix}-${var.environment}${count.index > 0 ? "-${count.index + 1}" : ""}"
+  })
+
+  user_data = data.template_file.user_data.rendered
+}
