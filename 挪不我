@@ -1,0 +1,19 @@
+是的，你可以直接在 ansible 命令中指定目标主机，而不是使用 all。方法如下：
+
+ansible <target_host> -m unarchive -a "src={{ user_dir }}/{{ env }}/node_exporter-{{ version }}.tar.gz dest={{ user_dir }}/{{ env }}/node_exporter remote_src=yes extra_opts='--strip=1'"
+
+具体参数：
+	•	<target_host>：替换为你的目标主机 IP 或主机名。例如：
+	•	ansible 192.168.1.100 -m unarchive -a "..."
+	•	ansible myserver -m unarchive -a "..."
+
+如果你没有在 inventory 文件中定义这个主机，而是直接指定 IP，需要用 -i 参数指定：
+
+ansible 192.168.1.100 -i 192.168.1.100, -m unarchive -a "src=/home/user/prod/node_exporter-1.5.0.tar.gz dest=/home/user/prod/node_exporter remote_src=yes extra_opts='--strip=1'"
+
+关键点：
+	1.	直接指定 IP 或主机名：ansible 192.168.1.100
+	2.	如果 IP 没在 inventory 文件，用 -i <IP>, 指定，比如 -i 192.168.1.100,
+	3.	确保远程主机可用：使用 ansible 192.168.1.100 -m ping 先测试连接是否正常。
+
+这样你就可以直接用 ansible -m 命令在指定主机上执行 unarchive 任务了！
