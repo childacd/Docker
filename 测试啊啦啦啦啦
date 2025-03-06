@@ -1,0 +1,69 @@
+要将 Ansible 任务 (task) 转换为 ansible -m 命令行执行，你需要把 maven_artifact 这个 module 及其参数转换成 ansible -m 格式的 CLI 命令。
+
+转换命令
+
+假设你想要在命令行直接执行这个任务，并且 group_id、artifact_id、version 等变量已经有值，比如：
+	•	preferred_snapshot_repository_url=https://nexus.example.com/repository/snapshots
+	•	group_id=com.example
+	•	artifact_id=my-library
+	•	version=1.0.0-SNAPSHOT
+	•	ext=jar
+	•	is_third_party=false
+
+你可以用以下命令来执行这个任务：
+
+ansible localhost -m maven_artifact -a "repository_url='https://nexus.example.com/repository/snapshots' \
+group_id='com.example' \
+artifact_id='my-library' \
+version='1.0.0-SNAPSHOT' \
+extension='jar' \
+dest='./artifacts' \
+timeout=60 \
+retries=3" \
+-e "version='1.0.0-SNAPSHOT' is_third_party=false" \
+--extra-vars "version='1.0.0-SNAPSHOT' is_third_party=false" \
+--limit localhost
+
+解释：
+	•	-m maven_artifact：指定要调用的 Ansible 模块。
+	•	-a "参数"：传递给模块的参数，格式为 "key=value" 形式。
+	•	-e "变量定义" / --extra-vars "变量定义"：如果任务中的 when 语句涉及到变量（如 version 和 is_third_party），你需要用 -e 传递这些变量。
+	•	--limit localhost：限制仅在 localhost 运行。
+
+如何通用地转换 Ansible Task 为 ansible -m 命令
+	1.	找到 task 的 module 名称
+例如 maven_artifact，在 task 里面 maven_artifact: 这一行表示使用 maven_artifact 模块。
+	2.	把 task 里的 参数: 值 转换成 -a "key=value" 格式
+例如：
+
+repository_url: "{{ preferred_snapshot_repository_url | default(snapshot_repository_url) }}"
+
+需要替换变量，假设 preferred_snapshot_repository_url=https://nexus.example.com/repository/snapshots：
+
+repository_url='https://nexus.example.com/repository/snapshots'
+
+
+	3.	处理 when 条件
+	•	when: "version.endswith('-SNAPSHOT') and is_third_party == false"
+	•	需要传递变量 version 和 is_third_party，可以用 -e 传递，例如：
+
+-e "version='1.0.0-SNAPSHOT' is_third_party=false"
+
+
+	•	也可以在命令里加 --extra-vars，如果变量值很多的话更方便管理：
+
+--extra-vars "version='1.0.0-SNAPSHOT' is_third_party=false"
+
+
+	4.	执行命令
+结合前面所有步骤，最终得到 ansible -m 命令。
+
+总结
+
+要把 Ansible task 转换成 ansible -m 命令，你需要：
+	1.	找到 module 名称，作为 -m 选项的值。
+	2.	把所有参数转换成 -a "key=value" 形式。
+	3.	处理 when 语句中的变量，并用 -e 或 --extra-vars 传递。
+	4.	运行 ansible localhost -m <module> -a "<args>" 命令。
+
+这样，你就能在命令行里测试和执行 Ansible 任务，而不需要写 Playbook。
