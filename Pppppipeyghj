@@ -1,0 +1,87 @@
+如果你想在 Jenkins Server 上 SSH 到一个 EC2 实例，然后在该实例上执行 AWS CLI 命令 来获取符合 pattern 的 AMI，并将 AMI Name 作为 Jenkins 参数选项，你可以这样做：
+
+方案概述
+	1.	Jenkins 通过 SSH 连接到 EC2 实例
+	2.	在 EC2 实例上执行 AWS CLI 命令
+	3.	获取 AMI Name 列表
+	4.	解析结果并更新 Jenkins 参数
+
+Jenkins Pipeline 实现
+
+pipeline {
+    agent any
+    parameters {
+        choice(name: 'AMI_SELECTION', choices: ['Loading...'], description: 'Select an AMI')
+    }
+    stages {
+        stage('Fetch AMI List via SSH') {
+            steps {
+                script {
+                    // SSH 到远程 EC2 实例并执行 AWS CLI 命令
+                    def sshCommand = '''
+                        ssh -o StrictHostKeyChecking=no ec2-user@your-ec2-ip "
+                        aws ec2 describe-images --owners self --filters 'Name=name,Values=my-pattern-*' --query 'Images[*].Name' --output json"
+                    '''
+                    
+                    def output = sh(script: sshCommand, returnStdout: true).trim()
+
+                    // 解析 JSON 格式的 AMI Name 列表
+                    def amiList = readJSON(text: output)
+                    
+                    if (amiList && amiList.size() > 0) {
+                        properties([
+                            parameters([
+                                choice(name: 'AMI_SELECTION', choices: amiList.join("\n"), description: 'Select an AMI')
+                            ])
+                        ])
+                    } else {
+                        error("No AMI found")
+                    }
+                }
+            }
+        }
+        stage('Deploy with Selected AMI') {
+            when {
+                expression { params.AMI_SELECTION != 'Loading...' }
+            }
+            steps {
+                echo "Using AMI: ${params.AMI_SELECTION}"
+            }
+        }
+    }
+}
+
+实现细节
+	1.	Jenkins 通过 SSH 连接到 EC2，并在该 EC2 上运行 aws ec2 describe-images 命令：
+
+aws ec2 describe-images --owners self --filters "Name=name,Values=my-pattern-*" --query 'Images[*].Name' --output json
+
+这个命令返回类似：
+
+["ami-xyz1", "ami-xyz2", "ami-xyz3"]
+
+
+	2.	Jenkins 解析 JSON 并更新参数
+	•	sh(script: sshCommand, returnStdout: true).trim() 获取 SSH 远程执行的 JSON 输出
+	•	readJSON(text: output) 解析 JSON 格式的 AMI 列表
+	•	properties([...]) 动态更新 choice 参数，展示 AMI 选项
+
+前提条件
+	1.	Jenkins Server 需要能 SSH 访问 EC2
+	•	确保 Jenkins 服务器 上有 SSH 私钥，且 EC2 公钥 已加入 ~/.ssh/authorized_keys
+	•	使用 ssh -i /path/to/private_key.pem ec2-user@your-ec2-ip 手动测试 SSH 连接
+	2.	EC2 实例需要 AWS CLI 访问权限
+	•	该实例需要配置 IAM Role 或 AWS Credentials，能访问 describe-images
+	3.	Jenkins 需要安装 Pipeline 插件
+	•	readJSON 需要 Pipeline Utility Steps 插件
+
+优化
+	•	如果 Jenkins 服务器本身 就有 AWS 权限，可以直接在 Jenkins 上执行 AWS CLI：
+
+def output = sh(script: "aws ec2 describe-images --owners self --filters 'Name=name,Values=my-pattern-*' --query 'Images[*].Name' --output json", returnStdout: true).trim()
+
+
+
+这样可以 避免 SSH，直接本地执行，提高效率。
+
+这个方案适用于 Jenkins 没有 AWS 权限，但可以通过 SSH 访问某个 有 AWS CLI 权限的 EC2 实例。
