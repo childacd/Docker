@@ -1,0 +1,77 @@
+如果你希望 每次刷新参数时动态获取 AMI 列表，Jenkins 的 choice 参数本身并不支持动态刷新，但可以使用 Active Choices Parameter Plugin 来实现。
+
+方案：使用 Active Choices Reactive Parameter
+
+思路
+	1.	在 Jenkins 参数中添加 Active Choices Reactive Parameter
+	2.	在 Groovy 脚本中执行 SSH 到 EC2 获取 AMI 列表
+	3.	每次用户刷新参数时，动态执行查询 AMI 的操作
+
+实现步骤
+
+Step 1: 安装插件
+	•	安装 Active Choices Plugin
+	•	安装 Active Choices Reactive Parameter Plugin
+
+Step 2: 配置 Jenkins Job
+
+在参数中添加 Active Choices Parameter
+
+在 Jenkins 参数化构建里，添加一个 Active Choices Reactive Parameter：
+	•	名称： AMI_SELECTION
+	•	Script Type： Groovy Script
+	•	Script：
+
+def sshCommand = "ssh -o StrictHostKeyChecking=no ec2-user@your-ec2-ip " +
+                 "'aws ec2 describe-images --owners self --filters Name=name,Values=my-pattern-* " +
+                 "--query \"Images[*].Name\" --output json'"
+
+def output = sshCommand.execute().text.trim()
+
+def amiList = new groovy.json.JsonSlurper().parseText(output)
+
+return amiList ?: ["No AMI Found"]
+
+
+	•	Rendered as: Single Select
+	•	Description: Select an AMI dynamically fetched from AWS
+
+Step 3: 在 Jenkinsfile 中使用
+
+pipeline {
+    agent any
+    parameters {
+        activeChoiceReactiveParam(
+            name: 'AMI_SELECTION',
+            description: 'Select an AMI dynamically fetched from AWS',
+            choiceType: 'SINGLE_SELECT',
+            script: [
+                groovyScript: '''
+                    def sshCommand = "ssh -o StrictHostKeyChecking=no ec2-user@your-ec2-ip " +
+                                    "'aws ec2 describe-images --owners self --filters Name=name,Values=my-pattern-* " +
+                                    "--query \"Images[*].Name\" --output json'"
+
+                    def output = sshCommand.execute().text.trim()
+
+                    def amiList = new groovy.json.JsonSlurper().parseText(output)
+
+                    return amiList ?: ["No AMI Found"]
+                '''
+            ]
+        )
+    }
+    stages {
+        stage('Deploy with Selected AMI') {
+            steps {
+                echo "Using AMI: ${params.AMI_SELECTION}"
+            }
+        }
+    }
+}
+
+效果
+	1.	每次用户手动刷新参数时，都会动态获取最新 AMI 列表
+	2.	避免了 choice 参数的静态性问题
+	3.	参数在构建时能正确传递到 Pipeline
+
+这种方法能保证 每次刷新参数时，都会去 AWS 重新获取最新 AMI，而不是使用 Loading... 的静态方式。
