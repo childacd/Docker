@@ -1,0 +1,8 @@
+TIMER=0
+while ! cloud-init status 2>/dev/null | grep -q "status: done"; do
+    sleep 2
+    TIMER=$((TIMER+2))
+    if [ "$TIMER" -ge 60 ]; then
+        break
+    fi
+done
