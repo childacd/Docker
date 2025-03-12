@@ -1,0 +1,20 @@
+if [ "$nvme_count" -eq 1 ]; then
+    device_name=$(echo "$nvme_output" | awk '/Amazon EC2 NVMe Instance Storage/ {print $1}')
+
+    chmod +x /etc/rc.d/rc.local
+
+    cat <<EOF | sudo tee /etc/rc.d/rc.local
+rm -rf /pgorch
+mkdir /pgorch
+chmod 744 -R /pgorch
+mkfs -t ext4 $device_name
+mount $device_name /pgorch
+chown -R $RUN_USER:$RUN_GROUP /pgorch
+EOF
+
+    # 如果需要 `fstab` 里持久化挂载，取消下面的注释
+    # echo "$device_name /pgorch ext4 defaults,nofail,x-systemd.automount 0 2" | sudo tee -a /etc/fstab
+fi
+
+echo "Finished"
+date "+%Y%m%d-%H%M%S"
