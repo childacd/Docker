@@ -1,0 +1,54 @@
+如果你只关注 Instance Store（本地存储），那么UUID 可能会在 EC2 实例重启后发生变化，具体情况如下：
+
+1. 仅仅重启（Reboot）实例
+	•	UUID 可能不会变化，因为 Instance Store 设备仍然挂载在同一实例上。
+	•	但由于 Instance Store 不是持久存储，在某些情况下，重启后仍可能导致设备重新初始化，进而改变 UUID。
+
+2. 停止（Stop）实例再启动
+	•	UUID 可能会变化，因为 AWS 可能会为你的实例分配不同的底层硬件，而 Instance Store 是物理绑定到特定主机的。
+	•	Instance Store 数据不会保留，重启后数据可能会丢失，并且设备 UUID 可能不同。
+
+3. 终止（Terminate）实例
+	•	UUID 一定会变化，因为 Instance Store 设备会被彻底释放，新的实例会分配全新的本地存储。
+
+如何稳定挂载 Instance Store？
+
+由于 UUID 可能会变，建议使用 设备名称 (/dev/nvme* 或 /dev/xvd*) 而不是 UUID 进行挂载。
+
+方案 1：使用设备路径（推荐）
+
+可以在 /etc/fstab 中直接使用设备名称：
+
+/dev/nvme1n1  /mnt/instance-store  ext4  defaults,nofail  0  2
+
+注意：
+	•	设备名称可能会变化，建议用 lsblk 或 nvme list 确认设备名称。
+
+方案 2：使用 LABEL
+
+可以给文件系统打上 LABEL，然后用 LABEL 挂载：
+
+sudo e2label /dev/nvme1n1 my-instance-store
+
+然后在 /etc/fstab 中：
+
+LABEL=my-instance-store  /mnt/instance-store  ext4  defaults,nofail  0  2
+
+优点：
+	•	即使设备名称变化，只要文件系统还在，LABEL 仍然有效。
+
+方案 3：使用 AWS EC2 Metadata
+
+可以在启动时动态查找 Instance Store 设备：
+
+INSTANCE_STORE=$(lsblk -o NAME,TYPE | grep disk | awk '{print "/dev/"$1}')
+mount $INSTANCE_STORE /mnt/instance-store
+
+然后在 rc.local 或者 cloud-init 里执行。
+
+结论
+	•	Instance Store 的 UUID 可能在实例 Stop/Start 后变化，尤其是数据丢失时。
+	•	不要使用 UUID 挂载，建议使用 设备名称、LABEL 或 AWS metadata 来挂载存储。
+	•	Instance Store 不是持久存储，重启后可能数据丢失，重要数据建议用 EBS。
+
+如果你的需求是希望在 EC2 重启后仍然能够稳定挂载 Instance Store，那么LABEL 是一个相对稳定的方案，但仍然需要考虑数据易失性的问题。
