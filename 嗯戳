@@ -1,0 +1,130 @@
+方法 1：使用 /etc/fstab 自动挂载 Instance Store
+
+AWS Instance Store 默认不会在 EC2 实例重启后自动挂载，因此，我们可以通过 /etc/fstab 配置，使得系统在启动时自动挂载它。
+
+步骤 1：确定 Instance Store 设备名
+
+在 AWS EC2 实例上，Instance Store 通常出现在 /dev/nvme* 或 /dev/xvd* 目录下。你可以用以下命令检查当前的设备：
+
+lsblk
+
+示例输出：
+
+NAME        MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+nvme0n1     259:0    0  100G  0 disk
+└─nvme0n1p1 259:1    0  100G  0 part /
+nvme1n1     259:2    0  500G  0 disk
+
+	•	nvme0n1 是主 EBS 卷，通常是根文件系统 /
+	•	nvme1n1 可能是你的 Instance Store 设备（未挂载）
+
+如果你的 Instance Store 设备已经被挂载，可以用以下命令检查：
+
+df -h
+
+步骤 2：格式化 Instance Store（如果尚未格式化）
+
+Instance Store 可能是未格式化的裸设备，因此需要先格式化（如果已经格式化，可以跳过这一步）。
+
+格式化为 ext4：
+
+sudo mkfs.ext4 /dev/nvme1n1
+
+	⚠ 警告：执行此命令会清空 nvme1n1 设备上的所有数据，请确保你选择的是正确的设备。
+
+步骤 3：创建挂载点
+
+在 /mnt 下创建挂载点：
+
+sudo mkdir -p /mnt/instance-store
+
+步骤 4：获取 UUID（可选但推荐）
+
+为了确保挂载不会因为设备名称变化而失败，可以使用 UUID 挂载：
+
+sudo blkid /dev/nvme1n1
+
+示例输出：
+
+/dev/nvme1n1: UUID="1234abcd-5678-efgh-9012-ijklmnopqrst" TYPE="ext4"
+
+记下 UUID，在后面的 /etc/fstab 配置中使用。
+
+步骤 5：编辑 /etc/fstab 以实现自动挂载
+
+使用 nano 或 vim 编辑 /etc/fstab：
+
+sudo nano /etc/fstab
+
+在文件末尾添加一行：
+
+UUID=1234abcd-5678-efgh-9012-ijklmnopqrst  /mnt/instance-store  ext4  defaults,nofail  0  2
+
+解释：
+	•	UUID=1234abcd-5678-efgh-9012-ijklmnopqrst：指定要挂载的设备（用 blkid 查到的 UUID）。
+	•	/mnt/instance-store：挂载点。
+	•	ext4：文件系统类型。
+	•	defaults：默认挂载选项（读写、自动恢复等）。
+	•	nofail：如果设备丢失（比如 AWS 没有分配 Instance Store），系统仍然可以正常启动，而不会卡住。
+	•	0：不进行 dump 备份。
+	•	2：在 fsck（文件系统检查）中第二优先级（根分区 0，其他分区 2）。
+
+步骤 6：测试挂载
+
+测试 /etc/fstab 配置是否正确：
+
+sudo mount -a
+
+如果没有报错，说明 fstab 配置正确，并且设备已经成功挂载。
+
+可以再次运行 df -h 确认：
+
+df -h | grep instance-store
+
+步骤 7：重启测试
+
+为了确保 Instance Store 能在 EC2 实例重启后自动挂载，你可以先重启实例：
+
+sudo reboot
+
+然后，登录回实例后检查：
+
+df -h | grep instance-store
+
+如果 /mnt/instance-store 仍然正确挂载，说明 /etc/fstab 配置生效。
+
+注意事项
+	1.	UUID 可能会变（如果 AWS 重新分配了 Instance Store 设备）
+	•	你可以改用设备路径（/dev/nvme1n1），但如果设备名称变化，可能会导致挂载失败。
+	•	更好的方法是用 LABEL（见下文）。
+	2.	使用 Label 代替 UUID（更稳定的方案）
+	•	给 Instance Store 设备设置 Label：
+
+sudo e2label /dev/nvme1n1 my-instance-store
+
+
+	•	然后在 /etc/fstab 里：
+
+LABEL=my-instance-store  /mnt/instance-store  ext4  defaults,nofail  0  2
+
+
+	•	这样即使 AWS 设备路径变化，系统仍然能找到正确的分区挂载！
+
+	3.	防止 fstab 挂载失败导致系统无法启动
+	•	nofail 选项确保如果 AWS 没有提供 Instance Store，系统仍然可以正常启动，而不会卡在 mount 阶段。
+
+总结
+
+✅ 自动挂载 Instance Store 的最简单方法：
+	•	在 /etc/fstab 里添加：
+
+UUID=xxxx-xxxx-xxxx-xxxx  /mnt/instance-store  ext4  defaults,nofail  0  2
+
+
+	•	或者使用 LABEL（更推荐）：
+
+LABEL=my-instance-store  /mnt/instance-store  ext4  defaults,nofail  0  2
+
+
+	•	运行 sudo mount -a 测试挂载是否成功。
+	•	之后，每次 EC2 实例重启，Instance Store 就会自动挂载！
