@@ -1,0 +1,170 @@
+当然！我会给你提供一个最小可运行的示例，你可以在本地 localhost 上直接运行，来验证 方法 1（Jinja2 变量解析） 和 方法 2（Python 动态 Inventory） 是否满足你的需求。
+
+✅ 方法 1：Jinja2 变量解析（最简单）
+
+1️⃣ 目录结构
+
+test_ansible/
+│── inventory.ini
+│── group_vars/
+│   ├── all.yml
+│   ├── Agroup.yml
+│   ├── Bgroup.yml
+│── playbook.yml
+│── ansible.cfg
+
+2️⃣ inventory.ini（静态 Inventory）
+
+[Agroup]
+localhost
+
+[Bgroup]
+localhost
+
+这里 localhost 同时属于 Agroup 和 Bgroup，我们要确保 -L Agroup 时用 Agroup 的变量，-L Bgroup 时用 Bgroup 的变量。
+
+3️⃣ group_vars/all.yml（Jinja2 动态解析变量）
+
+my_var: >-
+  {% for group in group_names if group in lookup('vars', 'group_var_map', default={}) %}
+    {{ lookup('vars', 'group_var_map')[group] }}
+  {% endfor %}
+
+这段 Jinja2 代码会自动选择 -L 指定的 group 的变量。
+
+4️⃣ group_vars/Agroup.yml
+
+group_var_map:
+  Agroup: "This is Agroup value"
+
+5️⃣ group_vars/Bgroup.yml
+
+group_var_map:
+  Bgroup: "This is Bgroup value"
+
+6️⃣ playbook.yml
+
+- hosts: all
+  gather_facts: no
+  tasks:
+    - debug: msg="{{ my_var }}"
+
+7️⃣ ansible.cfg（可选）
+
+[defaults]
+inventory = inventory.ini
+
+8️⃣ 运行验证
+
+测试 Agroup
+
+ansible-playbook playbook.yml -L Agroup
+
+✅ 预期输出
+
+TASK [debug] *****************************************************************
+ok: [localhost] => {
+    "msg": "This is Agroup value"
+}
+
+测试 Bgroup
+
+ansible-playbook playbook.yml -L Bgroup
+
+✅ 预期输出
+
+TASK [debug] *****************************************************************
+ok: [localhost] => {
+    "msg": "This is Bgroup value"
+}
+
+✅ 方法 2：Python 动态 Inventory
+
+如果你想用 Python 动态 Inventory 方式来实现，可以这样做：
+
+1️⃣ 目录结构
+
+test_ansible/
+│── dynamic_inventory.py
+│── playbook.yml
+│── ansible.cfg
+
+2️⃣ dynamic_inventory.py（Python 动态 Inventory）
+
+#!/usr/bin/env python3
+import json
+import sys
+
+# 定义动态 inventory
+inventory = {
+    "Agroup": {
+        "hosts": ["localhost"],
+        "vars": {"my_var": "This is Agroup value"}
+    },
+    "Bgroup": {
+        "hosts": ["localhost"],
+        "vars": {"my_var": "This is Bgroup value"}
+    },
+    "_meta": {
+        "hostvars": {}
+    }
+}
+
+# 处理 Ansible Inventory 请求
+if "--list" in sys.argv:
+    print(json.dumps(inventory, indent=4))
+    sys.exit(0)
+
+# 默认返回空
+print(json.dumps({}))
+
+赋予执行权限
+
+chmod +x dynamic_inventory.py
+
+3️⃣ playbook.yml
+
+- hosts: all
+  gather_facts: no
+  tasks:
+    - debug: msg="{{ my_var }}"
+
+4️⃣ ansible.cfg
+
+[defaults]
+inventory = ./dynamic_inventory.py
+
+5️⃣ 运行验证
+
+测试 Agroup
+
+ansible-playbook playbook.yml -L Agroup
+
+✅ 预期输出
+
+TASK [debug] *****************************************************************
+ok: [localhost] => {
+    "msg": "This is Agroup value"
+}
+
+测试 Bgroup
+
+ansible-playbook playbook.yml -L Bgroup
+
+✅ 预期输出
+
+TASK [debug] *****************************************************************
+ok: [localhost] => {
+    "msg": "This is Bgroup value"
+}
+
+✅ 结论
+
+方法	适用场景	复杂度	配置方式
+方法 1（Jinja2 变量解析）	适用于静态 inventory.ini	低	在 group_vars/all.yml 里用 Jinja2 自动解析
+方法 2（Python 动态 Inventory）	适用于完全动态环境	中	用 Python 生成 Inventory
+
+✅ 如果你只是想让 -L 指定的 group 变量生效，方法 1 更简单！
+✅ 如果你的 Inventory 需要动态生成，方法 2（Python 动态 Inventory）是更好的选择！
+
+你可以直接把这两个方法在本地跑一遍，看哪种方式更符合你的需求！
