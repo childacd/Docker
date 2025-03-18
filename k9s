@@ -1,0 +1,84 @@
+如果你想查找 Kubernetes NodePort 已经使用的端口，可以使用以下方法：
+
+方法 1: 直接用 kubectl get svc 查询 NodePort
+
+你可以列出所有 NodePort 类型的 Service，并查看它们占用了哪些端口：
+
+kubectl get svc -A --field-selector spec.type=NodePort -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{" "}{.spec.ports[*].nodePort}{"\n"}{end}'
+
+示例输出：
+
+default my-service 30080
+kube-system monitoring-service 31000
+default test-service 31500
+
+这表示：
+	•	default 命名空间的 my-service 使用 30080 端口。
+	•	kube-system 命名空间的 monitoring-service 使用 31000 端口。
+	•	default 命名空间的 test-service 使用 31500 端口。
+
+方法 2: 通过 kubectl describe svc 查询
+
+你可以 describe 某个 Service 来查看它使用的 NodePort：
+
+kubectl describe svc <service-name> -n <namespace>
+
+输出示例：
+
+Name:              my-service
+Namespace:         default
+Type:              NodePort
+IP:                10.98.123.45
+Port:             http  80/TCP
+TargetPort:       8080/TCP
+NodePort:         http  30080/TCP
+
+这里 30080 就是被 my-service 占用的 NodePort 端口。
+
+方法 3: 通过 kubectl get svc -o wide
+
+你可以用 kubectl get svc 并筛选 NodePort 端口：
+
+kubectl get svc -A -o wide | grep NodePort
+
+输出示例：
+
+NAMESPACE     NAME             TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
+default       my-service       NodePort   10.98.123.45    <none>        80:30080/TCP     10d
+kube-system   test-service     NodePort   10.99.32.12     <none>        443:31000/TCP    5d
+
+可以看到：
+	•	my-service 使用了 30080 端口。
+	•	test-service 使用了 31000 端口。
+
+方法 4: 通过 kubectl get services 并筛选 nodePort
+
+如果你只关心端口，可以用：
+
+kubectl get services -A -o=jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.type}{" "}{.spec.ports[*].nodePort}{"\n"}{end}'
+
+如果你想只看 NodePort 服务：
+
+kubectl get services -A --field-selector spec.type=NodePort -o=jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.ports[*].nodePort}{"\n"}{end}'
+
+方法 5: 在 Node 机器上检查端口
+
+如果你可以 SSH 进入 Node 机器，你可以使用 netstat 或 ss 来检查 30000-32767 范围内的端口：
+
+netstat -tulnp | grep 30000
+
+或者：
+
+ss -tulnp | grep LISTEN | grep 30000
+
+这样你可以看到哪些 NodePort 端口在监听，并且哪个进程在占用它们。
+
+总结
+
+方法	适用场景
+kubectl get svc -A --field-selector spec.type=NodePort -o jsonpath=...	列出所有 NodePort 及其端口
+kubectl describe svc <service-name> -n <namespace>	查询特定 Service 使用的 NodePort
+`kubectl get svc -A -o wide	grep NodePort`
+`netstat -tulnp	grep 30000（在 Node` 机器上）
+
+如果你想避免 NodePort 端口冲突，建议先用 kubectl get svc 查询已经使用的端口，然后再手动分配新的 NodePort 端口（如果需要）。
