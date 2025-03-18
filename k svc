@@ -1,0 +1,105 @@
+如果你的 Kubernetes Service 使用了 LoadBalancer 类型，但 集群不在云上，那么它可能使用的是 基于 MetalLB、Keepalived 等本地负载均衡方案，而不是 AWS、GCP 或 Azure 提供的云负载均衡器。你可以通过以下方法来确认 LoadBalancer 的来源：
+
+方法 1：检查 kubectl get svc 输出
+
+你可以运行以下命令，看看 LoadBalancer 服务是否分配了 EXTERNAL-IP：
+
+kubectl get svc -A
+
+示例输出：
+
+NAMESPACE   NAME              TYPE           CLUSTER-IP      EXTERNAL-IP       PORT(S)
+default     my-service        LoadBalancer   10.98.123.45    35.200.10.15      80:30080/TCP
+default     another-service   LoadBalancer   10.99.32.12     <pending>         443:31000/TCP
+
+	•	如果 EXTERNAL-IP 是 pending，说明集群 没有 云负载均衡支持，或者控制器没有正确配置。
+	•	如果 EXTERNAL-IP 是一个公网或私网 IP，可能是 MetalLB 或者一个手动配置的负载均衡器。
+	•	如果 IP 看起来像 AWS/GCP/Azure 的 IP 地址，则可能是云负载均衡器。
+
+方法 2：检查 kubectl describe svc
+
+你可以 describe 这个 Service，看看 Kubernetes 为它创建了什么资源：
+
+kubectl describe svc my-service -n default
+
+示例输出：
+
+Name:                     my-service
+Namespace:                default
+Type:                     LoadBalancer
+IP:                       10.98.123.45
+LoadBalancer Ingress:      a1234b5678c890.elb.amazonaws.com
+Port:                     80/TCP
+TargetPort:               8080/TCP
+
+如何判断是云负载均衡器？
+	•	如果 LoadBalancer Ingress 是一个域名，比如：
+	•	xxxx.elb.amazonaws.com → AWS ELB
+	•	xxxx.cloud.google.com → GCP LoadBalancer
+	•	xxxx.azure.com → Azure Load Balancer
+	•	如果 LoadBalancer Ingress 是一个 IP 地址，但没有云的域名，可能是 MetalLB 或者手动配置的负载均衡器。
+
+方法 3：检查集群 cloud-provider 配置
+
+如果你能访问 Kubernetes apiserver 的 --cloud-provider 配置，你可以检查它是否配置了云提供商：
+
+kubectl get nodes -o=jsonpath='{.items[*].spec.providerID}'
+
+示例输出：
+	•	aws://us-west-2c/i-0123456789abcdef → AWS
+	•	gce://my-project/us-central1-a/my-instance → GCP
+	•	azure:///subscriptions/... → Azure
+	•	none 或 没有输出 → 可能是 本地集群（Bare Metal）
+
+方法 4：查看 LoadBalancer 控制器
+
+在 Kubernetes 集群中，LoadBalancer 类型的 Service 依赖于 云控制器（Cloud Controller Manager, CCM）或本地负载均衡器（如 MetalLB） 进行管理。
+
+你可以列出 kube-system 命名空间的 Pods，看看是否有云提供商的 CCM：
+
+kubectl get pods -n kube-system
+
+如果你看到：
+	•	aws-cloud-controller-manager → AWS 负载均衡器
+	•	gcp-controller-manager → GCP 负载均衡器
+	•	azure-cloud-controller-manager → Azure 负载均衡器
+	•	没有这些控制器，但有 metallb-controller → 说明 你在用 MetalLB，而不是云负载均衡器
+
+方法 5：检查 LoadBalancer 的 Cloud Events
+
+如果你怀疑 LoadBalancer 是云提供的，可以查看 Events：
+
+kubectl get events -A | grep LoadBalancer
+
+示例输出：
+
+default   Normal   EnsuringLoadBalancer   service/my-service   Ensuring load balancer in cloud provider
+default   Normal   ProvisioningSucceeded  service/my-service   Successfully provisioned LoadBalancer
+
+	•	如果 Kubernetes 说它正在 Provisioning 负载均衡器，说明它可能依赖云提供商。
+	•	如果它 一直卡在 EnsuringLoadBalancer，可能是因为 集群不支持 LoadBalancer，但仍然尝试创建。
+
+方法 6：检查 kube-proxy 和 iptables
+
+如果你的 Service 有 EXTERNAL-IP，但你不确定它是不是云负载均衡器，你可以检查 kube-proxy 配置：
+
+iptables -t nat -L -n | grep -i loadbalancer
+
+如果你看到 NAT 规则把流量转发到 NodePort，那么它可能是一个本地负载均衡器（如 MetalLB）而不是云负载均衡。
+
+总结
+
+检查方式	结论
+kubectl get svc	如果 EXTERNAL-IP 是 pending，可能不是云负载均衡
+kubectl describe svc	如果 LoadBalancer Ingress 有 AWS/GCP/Azure 的域名，则是云提供的
+kubectl get nodes -o=jsonpath='{.items[*].spec.providerID}'	如果 providerID 是 aws://, gce://，则是云环境
+kubectl get pods -n kube-system	有 metallb-controller，则是 MetalLB（本地负载均衡）
+`kubectl get events -A	grep LoadBalancer`
+iptables -t nat -L -n	检查是否有 LoadBalancer 相关的 NAT 规则
+
+如果你的集群不是云上的，但 LoadBalancer 能正常工作，最可能的情况是：
+	1.	使用了 MetalLB（在 Bare Metal Kubernetes 或本地环境中模拟 LoadBalancer）
+	2.	使用了 Keepalived、HAProxy 或 Traefik 作为手动配置的负载均衡器
+	3.	你所在的组织搭建了私有云（比如 OpenStack Neutron），并提供了 LoadBalancer 作为 Service
+
+你可以用 方法 4（检查 kube-system 的 Pod） 来确认是否在用 MetalLB，如果是 metallb-controller，那就说明 LoadBalancer 不是云提供的，而是 自己部署的负载均衡。
