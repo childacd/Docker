@@ -1,3 +1,36 @@
+
+是的，Helm 支持循环遍历变量，可以通过 range 语法动态生成多个 StatefulSet，从而减少 helm install 的次数。这样，你只需要 一次 helm install，并在 values.yaml 里定义多个应用的 values，Helm 会自动遍历并生成多个 StatefulSet。
+
+1. 解决方案：使用 range 生成多个 StatefulSet
+
+你可以在 values.yaml 里定义一个 apps 列表，包含多个应用的 values，然后在 StatefulSet 模板中循环遍历这个列表，动态创建多个 StatefulSet。
+
+values.yaml（定义多个应用的变量）
+
+apps:
+  - name: app1
+    replicas: 2
+    image:
+      repository: nginx
+      tag: latest
+    resources:
+      requests:
+        cpu: "250m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+    hostPathBase: "/data/app1"
+
+  - name: app2
+    replicas: 3
+    image:
+      repository: redis
+      tag: latest
+    resources:
+      requests:
+        cpu: "200m"
+        memory
 看起来消息被截断了，我继续补充完整的 values.yaml 示例。
 
 完整的 values.yaml（包含多个应用配置）
