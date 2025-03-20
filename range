@@ -1,0 +1,132 @@
+看起来消息被截断了，我继续补充完整的 values.yaml 示例。
+
+完整的 values.yaml（包含多个应用配置）
+
+apps:
+  - name: app1
+    replicas: 2
+    image:
+      repository: nginx
+      tag: latest
+    resources:
+      requests:
+        cpu: "250m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+    hostPathBase: "/data/app1"
+
+  - name: app2
+    replicas: 3
+    image:
+      repository: redis
+      tag: latest
+    resources:
+      requests:
+        cpu: "200m"
+        memory: "256Mi"
+      limits:
+        cpu: "400m"
+        memory: "512Mi"
+    hostPathBase: "/data/app2"
+
+  - name: app3
+    replicas: 1
+    image:
+      repository: mysql
+      tag: "8.0"
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "512Mi"
+      limits:
+        cpu: "1000m"
+        memory: "1024Mi"
+    hostPathBase: "/data/app3"
+
+2. 在 StatefulSet 模板中使用 range 遍历
+
+在 Helm 的 templates/statefulset.yaml 里，你可以使用 range 遍历 apps，动态创建多个 StatefulSet：
+
+templates/statefulset.yaml
+
+{{- range .Values.apps }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .name }}
+spec:
+  serviceName: "{{ .name }}"
+  replicas: {{ .replicas }}
+  selector:
+    matchLabels:
+      app: {{ .name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .name }}
+    spec:
+      containers:
+      - name: {{ .name }}
+        image: {{ .image.repository }}:{{ .image.tag }}
+        resources:
+          requests:
+            cpu: {{ .resources.requests.cpu }}
+            memory: {{ .resources.requests.memory }}
+          limits:
+            cpu: {{ .resources.limits.cpu }}
+            memory: {{ .resources.limits.memory }}
+        volumeMounts:
+        - name: data
+          mountPath: /mnt/data
+      volumes:
+      - name: data
+        hostPath:
+          path: "{{ .hostPathBase }}"
+          type: DirectoryOrCreate
+{{- end }}
+
+模板解析
+	1.	{{- range .Values.apps }} 遍历 values.yaml 里的 apps 列表。
+	2.	每个应用生成一个 StatefulSet，名字为 app1, app2, app3。
+	3.	每个 StatefulSet 的 replicas、image、resources、hostPath 等都是动态填充的。
+
+3. 只用一次 helm install
+
+现在，你只需要一次 helm install
+
+helm install myapps ./helm-chart -f values.yaml
+
+Helm 会自动解析 values.yaml 并创建 3 个 StatefulSet，分别为：
+	•	app1
+	•	app2
+	•	app3
+
+你可以通过 kubectl get statefulsets 查看生成的 StatefulSet：
+
+kubectl get statefulsets
+
+输出类似：
+
+NAME    READY   AGE
+app1    2/2     10s
+app2    3/3     10s
+app3    1/1     10s
+
+4. 为什么这样做比手动 helm install 6 次更好？
+
+✅ 减少 Helm 命令执行次数 → 只需要 helm install 一次，而不是 helm install 6 次。
+✅ 方便管理 → 所有应用的配置都在 values.yaml 里，清晰易维护。
+✅ 减少重复 → 只写一个 StatefulSet 模板，而不是 6 个重复的 YAML。
+✅ 更容易扩展 → 只需在 values.yaml 里增加新应用的配置，不需要修改 StatefulSet 模板。
+
+5. 总结
+
+你完全可以只跑一次 helm install，然后 Helm 会自动帮你创建多个 StatefulSet，你只需要：
+	1.	在 values.yaml 里定义多个应用的变量（如 app1，app2，app3）。
+	2.	在 templates/statefulset.yaml 里使用 range 遍历 apps，自动创建多个 StatefulSet。
+	3.	只需要运行一次 helm install，所有 StatefulSet 就会自动创建。
+
+这样，你的 Helm 部署流程会更简单、更高效、更易维护！
