@@ -1,0 +1,5 @@
+当然可以，下面是翻译版本：
+
+	I forgot to set the type to CSV, so although these two files have a .csv extension, their actual content is in JSON format. However, they can still be used for reference, because if the data were converted to CSV and then queried from Dremio, the result would look the same.
+
+如果你需要更正式或更简洁的版本，也可以告诉我，我来帮你调整下风格。
