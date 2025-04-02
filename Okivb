@@ -1,0 +1,18 @@
+这段话的意思大致能理解，但句子结构比较长，有些地方逻辑不够清晰。如果是用于正式沟通或文档，建议稍作优化。下面是原文的简化和重写版，让意思更明确：
+
+原文简化版：
+
+I confirmed with Xinhao. (Correct me if I’m wrong.)
+Previously, the data was stored in MapR, and queried via a Hive view. That view contained some simple transformation logic based on the raw data in MapR.
+
+Now they are migrating the data to MongoDB.
+They want to query data from MongoDB in the same format as before (i.e., the format from the Hive view). So, it would be helpful to apply similar transformation logic (like the Hive view) when querying MongoDB.
+
+Maybe we can create some VDS (Virtual Data Source) to fulfill this requirement.
+
+这样会更清楚地传达三件事：
+	1.	数据原来在 MapR，用 Hive 的视图来查询，有些简单转换逻辑。
+	2.	现在要迁移到 MongoDB。
+	3.	需要用类似 Hive view 的方式处理 MongoDB 的数据，可以考虑用 VDS 实现。
+
+你是打算发给同事看的邮件或会议纪要吗？可以告诉我语境，我可以帮你润色成正式一点或口语一点的版本。
