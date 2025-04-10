@@ -1,0 +1,52 @@
+你好，我明白你的意思了，你的目标是在 locals 里根据 stack name 中是否包含特定子字符串（比如 bt 或 stress）来动态判断使用哪个 account setting，这个逻辑可以优雅地用条件表达式（三元表达式）来实现。
+
+下面是一个示例来帮你梳理这个逻辑，假设你的变量和 locals 设置如下：
+
+variable "stack_name" {
+  type = string
+}
+
+variable "account_setting_normal" {
+  type = map(any)
+}
+
+variable "account_setting_bt" {
+  type = map(any)
+}
+
+variable "account_setting_stress" {
+  type = map(any)
+}
+
+locals {
+  is_backtesting    = can(regex("bt", var.stack_name))
+  is_stress_testing = can(regex("stress", var.stack_name))
+
+  account_setting = local.is_stress_testing ? var.account_setting_stress :
+                    local.is_backtesting    ? var.account_setting_bt :
+                                               var.account_setting_normal
+}
+
+解读：
+	•	can(regex(...)) 用来判断是否匹配字符串（比 contains 更安全，因为 regex 可能抛错）。
+	•	然后我们用嵌套的三元表达式，先判断 is_stress_testing，优先级高于 is_backtesting，你也可以根据你自己的业务规则调整优先顺序。
+	•	最终决定用哪个 account_setting。
+
+替代写法（更清晰）：
+
+如果你觉得嵌套的三元表达式不够清晰，也可以拆成多个判断：
+
+locals {
+  is_backtesting    = can(regex("bt", var.stack_name))
+  is_stress_testing = can(regex("stress", var.stack_name))
+
+  account_setting = (
+    local.is_stress_testing ? var.account_setting_stress :
+    local.is_backtesting    ? var.account_setting_bt :
+                              var.account_setting_normal
+  )
+}
+
+你也可以加注释来说明逻辑路径，增强可读性。
+
+需要我帮你改写进现有的 .tf 文件结构里吗？或者你可以贴一段代码我来协助你对接。
