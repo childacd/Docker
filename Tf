@@ -77,3 +77,33 @@ main() {
 
 # 调用主函数
 main "$@"
+
+
+
+
+你可以使用 xargs 将 aws s3 ls 和 grep 得到的文件列表传递给脚本。这里是一个完整的例子，展示如何把 Terraform state file 列表传递给脚本：
+
+假设你运行的 AWS S3 命令是：
+
+aws s3 ls s3://your-bucket-name/ --recursive | grep "substring"
+
+结合脚本使用 xargs：
+
+aws s3 ls s3://your-bucket-name/ --recursive | grep "substring" | awk '{print $4}' | xargs ./terraform_cleanup.sh destroy
+
+解释：
+	•	aws s3 ls s3://your-bucket-name/ --recursive：列出 S3 存储桶中的所有对象。
+	•	grep "substring"：筛选出符合条件的文件名。
+	•	awk '{print $4}'：提取文件名（aws s3 ls 的输出中，文件名通常在第四列）。
+	•	xargs ./terraform_cleanup.sh destroy：将筛选出的文件名逐个传递给脚本。
+
+Dry-run 模式示例：
+
+aws s3 ls s3://your-bucket-name/ --recursive | grep "substring" | awk '{print $4}' | xargs ./terraform_cleanup.sh dry-run
+
+注意事项：
+	1.	确保 terraform_cleanup.sh 脚本有执行权限。
+	2.	awk '{print $4}' 中的列号 4 可能因 aws s3 ls 的输出格式不同而变化。如果输出不同，可以调整列号。
+	3.	如果文件名中有空格或特殊字符，建议在 xargs 中使用 -I {} 参数：
+
+aws s3 ls s3://your-bucket-name/ --recursive | grep "substring" | awk '{print $4}' | xargs -I {} ./terraform_cleanup.sh destroy "{}"
