@@ -1,0 +1,3 @@
+aws ec2 describe-instance-types \
+  --query "InstanceTypes[?VCpuInfo.DefaultVCpus==`64`].[InstanceType, MemoryInfo.SizeInMiB]" \
+  --output table | sort -k2 -n
