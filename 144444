@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# Filter: match instances where this tag contains a given substring
+MATCH_TAG_KEY="Environment"
+MATCH_TAG_SUBSTRING="prod"
+
+# Print this other tag's value in addition to instance ID and Name
+OTHER_TAG_KEY="Owner"
+
+# Describe all instances with the match tag key
+RAW_INSTANCES=$(aws ec2 describe-instances \
+  --filters "Name=tag-key,Values=$MATCH_TAG_KEY" \
+  --query "Reservations[].Instances[]" \
+  --output json)
+
+# Process with jq
+echo "$RAW_INSTANCES" | jq -r \
+  --arg match_key "$MATCH_TAG_KEY" \
+  --arg match_sub "$MATCH_TAG_SUBSTRING" \
+  --arg name_key "Name" \
+  --arg other_key "$OTHER_TAG_KEY" '
+  .[] 
+  | select(.Tags[]? | select(.Key == $match_key and (.Value | contains($match_sub))))
+  | {
+      InstanceId,
+      Name: (.Tags[]? | select(.Key == $name_key) | .Value) // "<no name>",
+      OtherTag: (.Tags[]? | select(.Key == $other_key) | .Value) // "<not set>"
+    }
+  | "\(.InstanceId)\t\(.Name)\t\(.OtherTag)"'
