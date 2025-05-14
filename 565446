@@ -1,0 +1,51 @@
+Great! To also print the Name tag of each instance along with the instance ID, you can modify the script to extract that using the Tags array in each instance.
+
+Here’s the updated script:
+
+Updated Script: Print Instance ID + Name
+
+#!/bin/bash
+
+# Define existing tag filters
+TAG_KEY1="Environment"
+TAG_VALUE1="prod"
+
+TAG_KEY2="App"
+TAG_VALUE2="web"
+
+# Define the new tag to add
+NEW_TAG_KEY="Backup"
+NEW_TAG_VALUE="true"
+
+# Query instances with matching tags and extract InstanceId + Name tag
+INSTANCES=$(aws ec2 describe-instances \
+  --filters "Name=tag:$TAG_KEY1,Values=$TAG_VALUE1" "Name=tag:$TAG_KEY2,Values=$TAG_VALUE2" \
+  --query "Reservations[].Instances[].[InstanceId, Tags[?Key=='Name'] | [0].Value]" \
+  --output text)
+
+if [ -z "$INSTANCES" ]; then
+  echo "No instances found with the specified tags."
+  exit 0
+fi
+
+echo "Matching instances:"
+echo "$INSTANCES" | while read -r INSTANCE_ID INSTANCE_NAME; do
+  echo "- ID: $INSTANCE_ID, Name: ${INSTANCE_NAME:-<no name>}"
+done
+
+# Extract just the instance IDs for tagging
+INSTANCE_IDS=$(echo "$INSTANCES" | awk '{print $1}')
+
+# Apply the new tag
+aws ec2 create-tags \
+  --resources $INSTANCE_IDS \
+  --tags Key=$NEW_TAG_KEY,Value=$NEW_TAG_VALUE
+
+echo "Tag added: $NEW_TAG_KEY=$NEW_TAG_VALUE"
+
+What’s New
+	•	Uses a --query that pulls both InstanceId and the Name tag (if it exists).
+	•	Gracefully handles cases where the Name tag is missing (<no name>).
+	•	Still performs the tag operation on all matched instance IDs.
+
+Let me know if you’d like to tag the volumes or network interfaces as well!
