@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# Tag filters: exact match
+MATCH_TAG_KEY="Environment"
+MATCH_TAG_VALUE="prod"
+
+# Second tag to print
+OTHER_TAG_KEY="Owner"
+
+aws ec2 describe-instances \
+  --filters "Name=tag:$MATCH_TAG_KEY,Values=$MATCH_TAG_VALUE" \
+  --query "Reservations[].Instances[].{
+      InstanceId: InstanceId,
+      Name: Tags[?Key=='Name'] | [0].Value,
+      OtherTag: Tags[?Key=='$OTHER_TAG_KEY'] | [0].Value
+    }" \
+  --output table
