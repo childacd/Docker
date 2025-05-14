@@ -1,0 +1,48 @@
+#!/bin/bash
+
+# Tag filter (exact match)
+TAG_KEY="Environment"
+TAG_VALUE="prod"
+
+echo "Finding instances with tag $TAG_KEY=$TAG_VALUE..."
+
+# Get matching instance IDs
+INSTANCE_IDS=$(aws ec2 describe-instances \
+  --filters "Name=tag:$TAG_KEY,Values=$TAG_VALUE" \
+  --query "Reservations[].Instances[].InstanceId" \
+  --output text)
+
+if [ -z "$INSTANCE_IDS" ]; then
+  echo "No instances found with tag $TAG_KEY=$TAG_VALUE"
+  exit 0
+fi
+
+for INSTANCE_ID in $INSTANCE_IDS; do
+  echo "Checking instance: $INSTANCE_ID"
+
+  # Get volume IDs and device names attached to the instance
+  VOLUMES=$(aws ec2 describe-instances \
+    --instance-ids "$INSTANCE_ID" \
+    --query "Reservations[].Instances[].BlockDeviceMappings[].Ebs.VolumeId" \
+    --output text)
+
+  for VOLUME_ID in $VOLUMES; do
+    # Get current volume type
+    VOLUME_TYPE=$(aws ec2 describe-volumes \
+      --volume-ids "$VOLUME_ID" \
+      --query "Volumes[0].VolumeType" \
+      --output text)
+
+    echo "- Volume $VOLUME_ID is of type $VOLUME_TYPE"
+
+    # If it's gp2, modify to gp3
+    if [ "$VOLUME_TYPE" = "gp2" ]; then
+      echo "  -> Modifying volume $VOLUME_ID to gp3..."
+      aws ec2 modify-volume \
+        --volume-id "$VOLUME_ID" \
+        --volume-type gp3 > /dev/null
+
+      echo "  ✓ Volume $VOLUME_ID modification initiated"
+    fi
+  done
+done
