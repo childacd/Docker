@@ -1,0 +1,81 @@
+# Release Runbook: Enable S3 Bucket Key
+
+## Overview
+
+This runbook provides step-by-step instructions for Production Support to enable **S3 Bucket Key** for selected S3 buckets in the `PROD_EU (12345678)` AWS account.
+
+## Prerequisites
+
+- Access to the AWS Console with sufficient S3 and IAM policy editing permissions.
+- List of target buckets to apply the changes.
+
+---
+
+## Step-by-Step Instructions
+
+### 1. Log in to AWS Console
+
+- Open the AWS Console: https://console.aws.amazon.com/
+- Log in to the `PROD_EU (12345678)` account.
+
+### 2. Navigate to the S3 Service
+
+- In the AWS Console, go to **S3**.
+- In the left navigation pane, click **Buckets**.
+
+### 3. Check Replication Status
+
+For each target bucket:
+
+1. Click the bucket name.
+2. Go to the **Management** tab.
+3. Scroll down to **Replication rules**.
+4. Determine if **replication is enabled**.
+
+### 4. Apply Configuration Based on Replication
+
+#### If Replication is Enabled:
+
+- Update the **Bucket Policy** to include the bucket as an encryption context.
+- Refer to the internal policy guidelines or reach out to the Security team for the correct policy JSON snippet.
+
+#### If Replication is NOT Enabled:
+
+- Proceed to the next step to enable the bucket key.
+
+---
+
+## 5. Enable S3 Bucket Key
+
+For each target bucket:
+
+1. Go to the **Properties** tab.
+2. Scroll to the **Default encryption** section.
+3. Click **Edit**.
+4. Under **Bucket Key**, select **Enable**.
+5. Click **Save changes**.
+
+Repeat for all target buckets.
+
+---
+
+## Post-Change Validation
+
+- Confirm that each bucket’s **Bucket Key** shows as "Enabled".
+- Verify that data uploads still succeed.
+- Optionally, test replication behavior (if applicable).
+
+---
+
+## Notes
+
+- Enabling Bucket Keys helps reduce the cost of using AWS KMS.
+- Do not enable Bucket Keys for buckets with custom KMS key policies unless validated.
+- Contact the Security or Cloud team if unsure about replication context policy changes.
+
+---
+
+## Appendix
+
+- [AWS Documentation: Using S3 Bucket Keys](https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucket-key.html)
+- Internal KB: `Confluence > Platform > S3 Bucket Encryption`
