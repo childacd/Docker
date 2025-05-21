@@ -1,0 +1,81 @@
+#!/bin/bash
+
+set -e
+
+if [ $# -ne 1 ]; then
+  echo "Usage: $0 <log-group-name>"
+  exit 1
+fi
+
+LOG_GROUP_NAME="$1"
+NOW=$(date +%s)
+THREE_MONTHS_AGO=$(date -d "-90 days" +%s)
+
+echo "Fetching LogStreams from Log Group: $LOG_GROUP_NAME"
+echo "Time range: from $(date -d "@$THREE_MONTHS_AGO") to now"
+
+# Step 1: Get LogStreams (may be tab-delimited)
+RAW_STREAMS=$(aws logs describe-log-streams \
+    --log-group-name "$LOG_GROUP_NAME" \
+    --order-by LastEventTime \
+    --descending \
+    --query "logStreams[?lastEventTimestamp >= \`$((THREE_MONTHS_AGO * 1000))\`].logStreamName" \
+    --output text)
+
+# Replace tab with newline
+STREAMS=$(echo "$RAW_STREAMS" | tr '\t' '\n')
+
+echo "=== Retrieved LogStreams ==="
+echo "$STREAMS"
+echo "============================"
+
+# Step 2: Extract instance IDs from end of LogStream names
+echo "$STREAMS" | grep -oE "i-[0-9a-f]{8,17}$" | sort | uniq > instance_ids.txt
+
+echo "=== Extracted Instance IDs ==="
+cat instance_ids.txt
+echo "=============================="
+
+# Step 3: Check instance status
+> running_instances.txt
+
+echo "Checking instance statuses (total: $(wc -l < instance_ids.txt))"
+echo "----------------------------------------"
+
+for id in $(cat instance_ids.txt); do
+    echo "Checking instance $id..."
+
+    # Use try-catch style guard
+    if ! result=$(aws ec2 describe-instances --instance-ids "$id" \
+        --query "Reservations[].Instances[].[InstanceId, State.Name, Tags[?Key=='Name'] | [0].Value]" \
+        --output text 2>/dev/null); then
+        echo "Instance $id not found or already terminated. Skipping."
+        echo "----------------------------------------"
+        continue
+    fi
+
+    if [ -z "$result" ]; then
+        echo "Instance $id has no reservation info. Skipping."
+        echo "----------------------------------------"
+        continue
+    fi
+
+    instance_id=$(echo "$result" | awk '{print $1}')
+    state=$(echo "$result" | awk '{print $2}')
+    name=$(echo "$result" | cut -f3)
+
+    echo "Instance ID: $instance_id"
+    echo "Name: ${name:-N/A}"
+    echo "State: $state"
+
+    if [[ "$state" == "running" ]]; then
+        echo "$instance_id is running. Saving to running_instances.txt"
+        echo "$instance_id" >> running_instances.txt
+    else
+        echo "$instance_id is in state '$state'. Skipping."
+    fi
+
+    echo "----------------------------------------"
+done
+
+echo "Done. Total running instances: $(wc -l < running_instances.txt)"
