@@ -1,0 +1,74 @@
+非常好！我们可以构造一个“假装很忙”的 Spark 程序，让 JVM 和 Spark UI 保持活跃几分钟，方便你观察后台行为。
+
+下面是一个能持续跑 5-10 分钟的示例程序：
+
+示例：模拟大规模计算任务的 PySpark 脚本
+
+from pyspark.sql import SparkSession
+import time
+
+# 创建 SparkSession
+spark = SparkSession.builder \
+    .appName("LongRunningJob") \
+    .master("local[*]") \
+    .config("spark.driver.memory", "2g") \
+    .getOrCreate()
+
+sc = spark.sparkContext
+
+# 模拟生成一个很大的 RDD（本地模式下会占用 CPU 资源）
+data = sc.parallelize(range(100_000_000), numSlices=8)
+
+# 执行一个比较耗时的操作，比如复杂的 map + reduce
+result = data.map(lambda x: (x % 10, x)) \
+             .groupByKey() \
+             .mapValues(lambda vals: sum(v * v for v in vals)) \
+             .collect()
+
+print("任务完成，总共有 {} 个 key".format(len(result)))
+
+# 停一下，让你有时间去观察 Spark UI 和 JVM 进程
+print("等待 3 分钟以观察 Spark UI...")
+time.sleep(180)
+
+# 优雅关闭 Spark
+spark.stop()
+
+这个程序干了什么？
+	•	创建了一个包含一亿个整数的 RDD；
+	•	把数据按 x % 10 分组，然后对每组执行平方求和（耗 CPU）；
+	•	加了一个 time.sleep(180)，让你有足够时间观察进程；
+	•	默认用你所有 CPU 核心运行；
+	•	配置 driver 内存为 2GB，可根据实际情况调整。
+
+你可以观察哪些东西？
+	1.	后台 JVM 是否启动了：
+
+jps
+
+会看到类似：
+
+12345 SparkSubmit
+
+
+	2.	访问 Spark Web UI（默认端口 4040）：
+打开浏览器访问：
+
+http://localhost:4040
+
+可以看到：
+	•	Job 和 Stage 的执行情况；
+	•	Executor 使用情况；
+	•	Storage 和 DAG 图。
+
+	3.	执行结束后 JVM 是否退出：
+	•	脚本最后 spark.stop()；
+	•	你应该会看到 Spark UI 页面也自动关闭；
+	•	JVM 进程也消失。
+
+运行建议
+	•	最好在 CPU 比较空闲时运行；
+	•	不建议在笔记本电脑上跑太久，风扇会呼呼响；
+	•	如果你希望用更久时间，我可以加大数据量或改成持续跑的逻辑（比如轮询不停算）。
+
+需要我把这个脚本做成一个 .py 文件让你直接下载运行，或者转换成 Jupyter Notebook 吗？也可以配个 Docker 环境，如果你希望彻底隔离运行环境。
