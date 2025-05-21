@@ -1,0 +1,35 @@
+#!/bin/bash
+
+set -e
+
+LOG_GROUP_NAME="/your/log/group"   # Replace with your actual log group name
+NOW=$(date +%s)
+THREE_MONTHS_AGO=$(date -d "-90 days" +%s)
+
+echo "Fetching LogStreams from the past 3 months..."
+STREAMS=$(aws logs describe-log-streams \
+    --log-group-name "$LOG_GROUP_NAME" \
+    --order-by LastEventTime \
+    --descending \
+    --query "logStreams[?lastEventTimestamp >= \`$((THREE_MONTHS_AGO * 1000))\`].logStreamName" \
+    --output text)
+
+echo "$STREAMS" | grep -E "i-[0-9a-f]{17}$" | sort | uniq > instance_ids.txt
+
+echo "Found $(wc -l < instance_ids.txt) unique instance IDs."
+
+echo "Checking instance statuses..."
+> running_instances.txt
+
+for id in $(cat instance_ids.txt); do
+    state=$(aws ec2 describe-instances --instance-ids $id \
+        --query "Reservations[].Instances[].State.Name" --output text 2>/dev/null)
+
+    if [[ "$state" == "running" ]]; then
+        echo "$id" >> running_instances.txt
+    else
+        echo "$id is in state: $state, skipping"
+    fi
+done
+
+echo "Filtered $(wc -l < running_instances.txt) running instances."
