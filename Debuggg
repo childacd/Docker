@@ -1,0 +1,89 @@
+好的！用「跳板機（jumpbox）」來做 kubectl port-forward 是一個非常常見的辦法，尤其在你本地機器無法直接連到 Kubernetes 集群的情況下。下面我會用圖解式說明 + 命令步驟，幫你搞懂整個流程。
+
+場景圖解
+
+你本地電腦
+     |
+     | SSH 隧道 (port 5005)
+     v
+[ 跳板機 / jumpbox ]
+     |
+     | kubectl port-forward (5005)
+     v
+[ K8s Driver Pod ]
+
+流程分兩步：
+
+步驟一：在 Jumpbox 上 port-forward Driver Pod
+
+假設你已經能從 jumpbox 上執行 kubectl，那你在 jumpbox 上跑這條命令：
+
+kubectl port-forward <driver-pod-name> 5005:5005 -n <namespace>
+
+你會看到類似這樣的輸出：
+
+Forwarding from 127.0.0.1:5005 -> 5005
+
+這表示：
+	•	在 jumpbox 的 localhost:5005 已經連上 Pod 的 5005
+	•	但是你本地還沒能連上 jumpbox 的 5005，這要下一步做
+
+步驟二：從你本地打 SSH 隧道到 jumpbox
+
+在你本地打開 terminal，輸入：
+
+ssh -L 5005:localhost:5005 <user>@<jumpbox-ip>
+
+這條命令的意思是：
+
+	把你自己電腦的 localhost:5005，映射到 jumpbox 上的 localhost:5005
+
+也就是：
+
+localhost:5005 (你本地) --> jumpbox:5005 --> driver pod:5005
+
+步驟三：在你本地 IDE 中 Attach Remote Debug
+
+打開 IntelliJ / VS Code，設定 Remote Debug 為：
+	•	Host: localhost
+	•	Port: 5005
+
+點「Attach」即可開始調試。
+
+完整示例
+	1.	Jumpbox 上：
+
+kubectl port-forward spark-driver-0 5005:5005 -n spark
+
+	2.	你本地機器：
+
+ssh -L 5005:localhost:5005 ec2-user@10.0.0.10
+
+	3.	在 IntelliJ 設定：
+
+Host: localhost
+Port: 5005
+
+補充技巧
+	•	如果你每次都要連，不妨把 SSH 寫成 alias 或 config：
+
+# ~/.ssh/config
+Host jumpbox
+  HostName 10.0.0.10
+  User ec2-user
+  LocalForward 5005 localhost:5005
+
+以後只要打：
+
+ssh jumpbox
+
+就自動打開 5005 隧道了。
+
+小結
+
+動作	說明
+在 jumpbox 上跑 kubectl port-forward	將 Pod 的 5005 曝露到 jumpbox 本地
+本地 SSH 到 jumpbox 並做 -L 隧道	把 jumpbox 的 5005 映射到你自己電腦上
+IDE 連 localhost:5005	就能連上遠端的 Pod 去 debug 了
+
+需要我幫你出一個完整的 YAML + port-forward + SSH tunnel 的流程文件？我可以幫你寫成 README 格式，你團隊也能複製用。
