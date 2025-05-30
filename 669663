@@ -1,0 +1,106 @@
+太好了，我來詳細說明你提到的兩個方向：
+
+✅ 方法 3：使用 Bucket Policy 禁止寫入某個資料夾（Prefix）
+
+這個方法是在 bucket 層級 做限制，會影響所有人（所有 user/group），也就是全局的 Deny。
+
+🎯 目標範例：
+
+	禁止所有人往 mybucket/secret-folder/ 上傳（PutObject）
+
+✅ 第一步：準備 Bucket Policy JSON
+
+你可以寫一個明確的 Deny policy，如下：
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyUploadToSecretFolder",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::mybucket/secret-folder/*"
+    }
+  ]
+}
+
+這表示：
+	•	Effect: Deny：明確拒絕
+	•	Principal: "*"：拒絕所有人（user 或 group）
+	•	Action: s3:PutObject：拒絕上傳檔案
+	•	Resource: arn:aws:s3:::mybucket/secret-folder/*：針對這個 prefix
+
+✅ 第二步：套用這條 Bucket Policy
+
+用 mc 指令把 policy 套用上去：
+
+mc alias set minio http://<your-minio-host>:9000 <access-key> <secret-key>
+
+mc admin policy set-json deny-secret-folder.json --name deny-secret-folder --alias minio
+
+mc admin bucket policy set minio/mybucket deny-secret-folder
+
+或者更直接：
+
+mc ilm import minio/mybucket < deny-secret-folder.json
+
+（視你 MinIO 版本而定，建議用 mc admin bucket policy 這套）
+
+✅ 驗證
+
+你可以嘗試：
+
+mc cp somefile.txt minio/mybucket/secret-folder/
+
+應該會出現類似「Access Denied」的錯誤。
+
+✅ 嘗試為某個使用者 attach 一個“禁止寫入”的 policy
+
+雖然前面說明過 MinIO 是 “most permissive wins”，不過還是可以試試以下步驟（當測試或單純為了教育目的時是合理的）。
+
+❗ 重要提醒：
+
+	在 MinIO 中，Deny 不會 override Allow，所以如果該 user 屬於一個有 write 權限的 group，這個 Deny policy 無效。
+
+✅ Policy JSON：拒絕特定資料夾上傳
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyPutSecretFolder",
+      "Effect": "Deny",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::mybucket/secret-folder/*"
+    }
+  ]
+}
+
+儲存為 deny-upload.json。
+
+✅ 套用步驟
+	1.	建立 policy：
+
+mc admin policy add minio deny-upload deny-upload.json
+
+	2.	綁定給使用者：
+
+mc admin policy set minio user=<your-username> policy=deny-upload
+
+✅ 驗證結果
+
+你可以用這個 user 嘗試：
+
+mc cp test.txt minio/mybucket/secret-folder/
+
+你會發現：
+	•	如果這個 user 沒有其他 group 或其他 policy 可以寫入該目錄，則會 Access Denied
+	•	如果這個 user 屬於允許寫的 group，還是可以寫入（MinIO 的 most-permissive 設計）
+
+✅ 最後建議
+	•	❌ MinIO 沒有 IAM-style explicit deny 的強制優先權，所以不能用 deny 覆蓋 group 的 allow。
+	•	✅ 建議用 bucket policy 來限制整個 prefix 的行為。
+	•	✅ 或者在權限規劃時，分組更細粒度控制，不讓 user 加入過於寬鬆的 group。
+
+需要的話，我可以幫你寫一整套 user policy + bucket policy 測試流程或自動化腳本。要不要？
