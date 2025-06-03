@@ -1,0 +1,45 @@
+太好了，那我们就保持你原来写在 environment block 里的结构（使用三元表达式），并对嵌套逻辑进行格式优化和美化，提升可读性 ✅
+
+✅ 美化后的三元表达式（缩进 + 括号结构清晰）
+
+USER = "${ANSIBLE_INVENTORY == 'prod' ? (
+            CMDB_TYPE == 'SFT'         ? 'A'   :
+            CMDB_TYPE == 'SFT-BT'      ? 'B'   :
+            CMDB_TYPE == 'SFT-STRESS'  ? 'C'   :
+            CMDB_TYPE == 'sft'         ? 'CCC' :
+                                         'UNKNOWN'
+        ) : 'D'}"
+
+✅ 特点说明
+	•	缩进对齐：更容易看清每一层判断逻辑；
+	•	用括号包住内部判断：避免混淆；
+	•	明确 fallback：如果 CMDB_TYPE 不匹配，默认是 'UNKNOWN'，你可以改成空字符串或报错提示；
+	•	字符串不要省引号：即使是 'D'、'A' 等，也保持一致性。
+
+🚀 用法示例
+
+如果你写在 environment block 中可以像这样：
+
+pipeline {
+    agent any
+    environment {
+        ANSIBLE_INVENTORY = 'prod'
+        CMDB_TYPE = 'SFT'
+        USER = "${ANSIBLE_INVENTORY == 'prod' ? (
+                    CMDB_TYPE == 'SFT'         ? 'A'   :
+                    CMDB_TYPE == 'SFT-BT'      ? 'B'   :
+                    CMDB_TYPE == 'SFT-STRESS'  ? 'C'   :
+                    CMDB_TYPE == 'sft'         ? 'CCC' :
+                                                 'UNKNOWN'
+                ) : 'D'}"
+    }
+    stages {
+        stage('Echo USER') {
+            steps {
+                echo "USER is ${env.USER}"
+            }
+        }
+    }
+}
+
+如果你还有更多类似三元表达式需要整理，或者想把这段抽成函数处理（比如定义一个 getUser(...)），也可以继续优化～
