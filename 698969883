@@ -1,0 +1,63 @@
+太好了，那我们就来做一个更精确的版本：
+你只想挂载某个 Node 上的特定路径，比如 /data/logs 或 /var/lib/docker，到 Pod 里的某个目录，然后在里面执行 ls。
+
+✅ 示例场景：
+
+比如你要查看 Node 上的 /data/logs，那我们挂载这个路径到容器里的 /mnt/logs，然后执行 ls /mnt/logs。
+
+✅ Pod YAML 示例（挂载 Node 上特定路径）
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: node-log-inspect
+spec:
+  containers:
+  - name: inspect-container
+    image: alpine
+    command: ["/bin/sh", "-c"]
+    args:
+      - ls /mnt/logs; sleep 3600
+    volumeMounts:
+    - name: node-logs
+      mountPath: /mnt/logs
+    tty: true
+    stdin: true
+  volumes:
+  - name: node-logs
+    hostPath:
+      path: /data/logs         # <<< 你要查看的 Node 上的真实路径
+      type: Directory
+  nodeSelector:
+    kubernetes.io/hostname: your-node-name  # <<< 替换为目标 Node 名
+  restartPolicy: Never
+
+🔧 替换说明：
+	•	path: /data/logs —— 改成你要看的 Node 上的路径；
+	•	mountPath: /mnt/logs —— 你容器里要访问的路径；
+	•	your-node-name —— 改成目标节点名，可通过：
+
+kubectl get nodes -o wide
+
+🚀 使用步骤：
+	1.	保存为 node-log-inspect.yaml；
+	2.	创建：
+
+kubectl apply -f node-log-inspect.yaml
+
+
+	3.	查看日志（ls 的结果）：
+
+kubectl logs node-log-inspect
+
+
+	4.	进入容器继续查看文件内容：
+
+kubectl exec -it node-log-inspect -- /bin/sh
+ls /mnt/logs
+
+需要我根据你真实路径和 node 名帮你直接生成一份 YAML 吗？只要告诉我：
+	•	你要看的 Node 名
+	•	Node 上的目录路径
+
+我可以直接帮你生成。
