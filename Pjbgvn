@@ -1,0 +1,87 @@
+太棒了！你已经写好了 Python 脚本，接下来你只需要用 curl、Postman，或者自己写个 Python 请求就可以发 API 请求了。
+
+我给你一个最简单直接的 请求示例，你可以马上用。
+
+✅ 1. 启动你的 API
+
+假设你的文件名是 main.py，启动命令：
+
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+这个时候你的 API 地址是：
+
+http://<your-server-ip>:8000
+
+如果你是在本机测试：
+
+http://127.0.0.1:8000
+
+✅ 2. Sample Request (用 curl)
+
+Example: Copy file from S3 to MinIO
+
+curl -X POST "http://127.0.0.1:8000/copy" \
+-H "Content-Type: application/json" \
+-d '{
+  "source_type": "s3",
+  "source_bucket": "your-s3-bucket",
+  "source_object": "path/in/s3/file.txt",
+  "destination_type": "minio",
+  "destination_bucket": "your-minio-bucket",
+  "destination_object": "path/in/minio/file.txt"
+}'
+
+Example: Copy file from MinIO to S3
+
+curl -X POST "http://127.0.0.1:8000/copy" \
+-H "Content-Type: application/json" \
+-d '{
+  "source_type": "minio",
+  "source_bucket": "your-minio-bucket",
+  "source_object": "path/in/minio/file.txt",
+  "destination_type": "s3",
+  "destination_bucket": "your-s3-bucket",
+  "destination_object": "path/in/s3/file.txt"
+}'
+
+✅ 3. 成功响应格式
+
+如果成功：
+
+{
+  "message": "File copied successfully."
+}
+
+如果失败：
+
+{
+  "detail": "Error Message..."
+}
+
+✅ 4. 可选：用 Python 发请求（更优雅）
+
+你也可以写个 Python 脚本发请求：
+
+import requests
+
+url = "http://127.0.0.1:8000/copy"
+
+data = {
+    "source_type": "s3",
+    "source_bucket": "your-s3-bucket",
+    "source_object": "path/in/s3/file.txt",
+    "destination_type": "minio",
+    "destination_bucket": "your-minio-bucket",
+    "destination_object": "path/in/minio/file.txt"
+}
+
+response = requests.post(url, json=data)
+
+print(response.json())
+
+如果你需要我帮你：
+	•	增加批量 copy
+	•	支持上传文件
+	•	支持异步
+
+可以随时告诉我，我帮你扩展！🔥
