@@ -1,0 +1,83 @@
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import boto3
+from minio import Minio
+from minio.error import S3Error
+import os
+
+app = FastAPI()
+
+# ================== MinIO Configuration ==================
+# Configure your MinIO server here
+MINIO_ENDPOINT = "minio.example.com:9000"
+MINIO_ACCESS_KEY = "your-minio-access-key"
+MINIO_SECRET_KEY = "your-minio-secret-key"
+MINIO_SECURE = False  # Set to True if MinIO uses HTTPS
+
+minio_client = Minio(
+    MINIO_ENDPOINT,
+    access_key=MINIO_ACCESS_KEY,
+    secret_key=MINIO_SECRET_KEY,
+    secure=MINIO_SECURE
+)
+
+# ================== AWS S3 Configuration ==================
+# boto3 automatically uses the EC2 instance profile if available.
+s3_client = boto3.client('s3')
+
+# ================== API Input Model ==================
+class CopyRequest(BaseModel):
+    source_type: str  # 's3' or 'minio'
+    source_bucket: str
+    source_object: str
+    destination_type: str  # 's3' or 'minio'
+    destination_bucket: str
+    destination_object: str
+
+# ================== Copy Logic ==================
+def download_from_s3(bucket, key, download_path):
+    s3_client.download_file(bucket, key, download_path)
+
+def upload_to_s3(bucket, key, upload_path):
+    s3_client.upload_file(upload_path, bucket, key)
+
+def download_from_minio(bucket, key, download_path):
+    minio_client.fget_object(bucket, key, download_path)
+
+def upload_to_minio(bucket, key, upload_path):
+    minio_client.fput_object(bucket, key, upload_path)
+
+# ================== API Endpoint ==================
+@app.post("/copy")
+def copy_file(request: CopyRequest):
+    try:
+        temp_file = "/tmp/temp_file"
+        
+        # Step 1: Download from source
+        if request.source_type == "s3":
+            download_from_s3(request.source_bucket, request.source_object, temp_file)
+        elif request.source_type == "minio":
+            download_from_minio(request.source_bucket, request.source_object, temp_file)
+        else:
+            raise HTTPException(status_code=400, detail="Invalid source_type. Use 's3' or 'minio'.")
+
+        # Step 2: Upload to destination
+        if request.destination_type == "s3":
+            upload_to_s3(request.destination_bucket, request.destination_object, temp_file)
+        elif request.destination_type == "minio":
+            upload_to_minio(request.destination_bucket, request.destination_object, temp_file)
+        else:
+            raise HTTPException(status_code=400, detail="Invalid destination_type. Use 's3' or 'minio'.")
+
+        return {"message": "File copied successfully."}
+
+    except S3Error as e:
+        raise HTTPException(status_code=500, detail=f"MinIO Error: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unexpected Error: {str(e)}")
+    finally:
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
+
+# ================== Run API ==================
+# Run the API using: uvicorn filename:app --reload --host 0.0.0.0 --port 8000
