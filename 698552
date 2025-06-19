@@ -1,0 +1,100 @@
+你說得對！那一段我當時留了個坑，應該幫你補完，現在我直接幫你補全這一段，讓 整個 MinIO ➜ S3 的遞歸上傳流程完整可用，完全不用你自己寫。
+
+✅ 補全後的核心邏輯：
+
+MinIO ➜ S3 的整個流程：
+	1.	從 MinIO 遞歸下載整個資料夾到 /tmp/（用 mc cp --recursive）
+	2.	遍歷 /tmp/ 下載好的所有檔案
+	3.	按照相對路徑，一個一個上傳到 S3
+
+🔥 完整補全版 copy_file 函數
+
+import boto3
+import os
+import subprocess
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+from s3_wrapper import s3_copy, s3_list_buckets, s3_list_objects
+from mc_wrapper import mc_copy, mc_list_buckets, mc_list_objects
+from logger import logger
+
+app = FastAPI()
+s3_client = boto3.client('s3')
+
+class CopyRequest(BaseModel):
+    source_type: str = Field(..., example="s3")
+    source_bucket: str = Field(..., example="my-source-bucket")
+    source_object: str = Field(..., example="my-folder/")
+    destination_type: str = Field(..., example="minio")
+    destination_bucket: str = Field(..., example="my-dest-bucket")
+    destination_object: str = Field(..., example="backup/")
+
+@app.post("/copy")
+async def copy_file(copy_request: CopyRequest):
+    logger.info(f"📥 Received copy request: {copy_request.dict()}")
+
+    try:
+        if copy_request.source_type == "s3" and copy_request.destination_type == "minio":
+            # S3 to MinIO
+            logger.info("S3 to MinIO copy started.")
+            s3_objects = s3_list_objects(copy_request.source_bucket, copy_request.source_object)
+            for obj in s3_objects:
+                relative_path = obj[len(copy_request.source_object):]
+                local_file = f"/tmp/{relative_path}"
+
+                os.makedirs(os.path.dirname(local_file), exist_ok=True)
+
+                s3_client.download_file(copy_request.source_bucket, obj, local_file)
+
+                mc_copy("minio", copy_request.destination_bucket, copy_request.destination_object + relative_path, local_file, is_download=False)
+
+            logger.info("✅ S3 to MinIO copy completed.")
+
+        elif copy_request.source_type == "minio" and copy_request.destination_type == "s3":
+            # MinIO to S3
+            logger.info("MinIO to S3 copy started.")
+
+            local_temp_dir = "/tmp/minio_download"
+            os.makedirs(local_temp_dir, exist_ok=True)
+
+            mc_copy("minio", copy_request.source_bucket, copy_request.source_object, local_temp_dir, is_download=True)
+
+            # 遍歷下載下來的所有檔案
+            for root, dirs, files in os.walk(os.path.join(local_temp_dir, copy_request.source_object.strip("/"))):
+                for file in files:
+                    local_path = os.path.join(root, file)
+                    relative_path = os.path.relpath(local_path, local_temp_dir)
+
+                    destination_key = os.path.join(copy_request.destination_object, relative_path).replace("\\", "/")
+
+                    s3_client.upload_file(local_path, copy_request.destination_bucket, destination_key)
+                    logger.info(f"Uploaded {local_path} to s3://{copy_request.destination_bucket}/{destination_key}")
+
+            logger.info("✅ MinIO to S3 copy completed.")
+
+        else:
+            raise Exception("Unsupported storage types")
+
+        return {"message": "Copy completed successfully."}
+
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+✅ 說明：
+	•	os.walk 會幫你自動遞歸列出所有下載的檔案，不用你自己寫遞歸。
+	•	os.path.relpath 會拿到相對路徑，保證檔案結構一致。
+	•	destination_key 會拼接成正確的 S3 路徑，支持 Windows 和 Linux 路徑格式。
+
+🚀 這下整個流程就全自動了：
+
+操作場景	處理方式
+S3 ➜ MinIO	boto3 下載 + mc cp 上傳
+MinIO ➜ S3	mc cp 下載 + boto3 上傳
+
+如果你想，我可以幫你：
+	•	完整打包整個專案
+	•	幫你寫 dockerfile
+	•	幫你設計 production pipeline
+
+你要我幫你做嗎？
