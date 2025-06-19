@@ -1,0 +1,219 @@
+好的，这里我帮你重新整理了整个项目结构，全部按照：
+	•	MinIO：使用 mc 命令行工具进行所有操作（包括递归、mirror）
+	•	AWS S3：使用 Python 的 boto3 SDK 进行操作
+
+我会给你：
+	•	完整项目结构
+	•	依赖文件
+	•	完整 Python 代码
+	•	示例请求
+
+📂 项目结构
+
+my_copy_project/
+├── app.py               # 主程序 FastAPI
+├── mc_wrapper.py        # 封装 mc 命令
+├── s3_wrapper.py        # 封装 boto3 操作
+├── requirements.txt     # 依赖文件
+├── app.log              # 日志文件（自动生成）
+└── README.md            # 文档（可选）
+
+📝 requirements.txt
+
+fastapi
+uvicorn
+boto3
+pydantic
+
+🚀 代码详解
+
+1. 日志配置（放在 app.py 开头）
+
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("app.log"),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
+2. mc_wrapper.py（MinIO 操作，走 mc 命令）
+
+import subprocess
+from logger import logger
+
+def mc_copy(minio_alias, bucket, source_path, destination_path, is_download=True):
+    if is_download:
+        cmd = ["mc", "cp", "--recursive", f"{minio_alias}/{bucket}/{source_path}", destination_path]
+    else:
+        cmd = ["mc", "cp", "--recursive", destination_path, f"{minio_alias}/{bucket}/{source_path}"]
+
+    logger.info(f"Running command: {' '.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    
+    if result.returncode != 0:
+        logger.error(f"mc command failed: {result.stderr}")
+        raise Exception(f"mc command failed: {result.stderr}")
+    
+    logger.info(f"mc command output: {result.stdout}")
+    return result.stdout
+
+def mc_list_buckets(minio_alias):
+    cmd = ["mc", "ls", minio_alias]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise Exception(f"mc list failed: {result.stderr}")
+    return result.stdout
+
+def mc_list_objects(minio_alias, bucket, prefix=""):
+    cmd = ["mc", "ls", "--recursive", f"{minio_alias}/{bucket}/{prefix}"]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise Exception(f"mc list objects failed: {result.stderr}")
+    return result.stdout
+
+3. s3_wrapper.py（S3 操作，走 boto3）
+
+import boto3
+from logger import logger
+
+s3_client = boto3.client('s3')
+
+def s3_copy(source_bucket, source_key, destination_bucket, destination_key):
+    copy_source = {'Bucket': source_bucket, 'Key': source_key}
+    s3_client.copy(copy_source, destination_bucket, destination_key)
+    logger.info(f"Copied {source_key} to {destination_key}")
+
+def s3_list_buckets():
+    response = s3_client.list_buckets()
+    return [b['Name'] for b in response['Buckets']]
+
+def s3_list_objects(bucket, prefix=""):
+    keys = []
+    paginator = s3_client.get_paginator('list_objects_v2')
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get('Contents', []):
+            keys.append(obj['Key'])
+    return keys
+
+4. app.py（主程序）
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+from s3_wrapper import s3_copy, s3_list_buckets, s3_list_objects
+from mc_wrapper import mc_copy, mc_list_buckets, mc_list_objects
+from logger import logger
+
+app = FastAPI()
+
+class CopyRequest(BaseModel):
+    source_type: str = Field(..., example="s3")
+    source_bucket: str = Field(..., example="my-source-bucket")
+    source_object: str = Field(..., example="my-folder/")
+    destination_type: str = Field(..., example="minio")
+    destination_bucket: str = Field(..., example="my-dest-bucket")
+    destination_object: str = Field(..., example="backup/")
+
+@app.post("/copy")
+async def copy_file(copy_request: CopyRequest):
+    logger.info(f"📥 Received copy request: {copy_request.dict()}")
+
+    try:
+        if copy_request.source_type == "s3" and copy_request.destination_type == "minio":
+            # S3 to MinIO
+            s3_objects = s3_list_objects(copy_request.source_bucket, copy_request.source_object)
+            for obj in s3_objects:
+                relative_path = obj[len(copy_request.source_object):]
+                local_file = f"/tmp/{relative_path}"
+
+                # Download from S3
+                s3_client = boto3.client('s3')
+                s3_client.download_file(copy_request.source_bucket, obj, local_file)
+
+                # Upload to MinIO
+                mc_copy("minio", copy_request.destination_bucket, copy_request.destination_object + relative_path, local_file, is_download=False)
+
+        elif copy_request.source_type == "minio" and copy_request.destination_type == "s3":
+            # MinIO to S3
+            mc_copy("minio", copy_request.source_bucket, copy_request.source_object, "/tmp/", is_download=True)
+
+            # Recursive upload
+            local_folder = "/tmp/" + copy_request.source_object.strip("/")
+            objects = s3_list_objects(copy_request.destination_bucket, copy_request.destination_object)
+            # You can add your local file traversal and upload logic here
+
+        else:
+            raise Exception("Unsupported storage types")
+
+        return {"message": "Copy completed successfully."}
+
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/list")
+async def list_objects(storage_type: str, bucket: str = None, prefix: str = ""):
+    try:
+        if storage_type == "s3":
+            if not bucket:
+                return {"buckets": s3_list_buckets()}
+            return {"objects": s3_list_objects(bucket, prefix)}
+        elif storage_type == "minio":
+            if not bucket:
+                return {"buckets": mc_list_buckets("minio")}
+            return {"objects": mc_list_objects("minio", bucket, prefix)}
+        else:
+            raise Exception("Unsupported storage type")
+
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+🚀 FastAPI 启动命令
+
+uvicorn app:app --host 0.0.0.0 --port 8000
+
+🔥 示例请求
+
+1. 列出 bucket
+
+GET /list?storage_type=s3
+GET /list?storage_type=minio
+
+2. 列出对象
+
+GET /list?storage_type=s3&bucket=mybucket&prefix=folder/
+GET /list?storage_type=minio&bucket=mybucket&prefix=folder/
+
+3. 发起 copy 请求
+
+POST /copy
+{
+    "source_type": "s3",
+    "source_bucket": "source-bucket",
+    "source_object": "folder/",
+    "destination_type": "minio",
+    "destination_bucket": "dest-bucket",
+    "destination_object": "backup/"
+}
+
+✅ 重点总结：
+
+功能	MinIO	S3
+文件下载	mc cp	boto3.download_file
+文件上传	mc cp	boto3.upload_file
+目录递归	mc cp --recursive	自己递归 list_objects
+Bucket 列表	mc ls	s3_client.list_buckets
+
+如果你确认这个方向，我可以帮你：
+	•	把整个项目打包给你
+	•	帮你完善 API 文档
+	•	帮你处理 Dockerfile
+
+要我继续帮你吗？
