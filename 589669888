@@ -1,0 +1,95 @@
+好的，下面是加入路径动态判断功能后的完整核心代码：
+
+✅ 动态判断是否为文件夹的公共函数
+
+（建议放在 utils.py）
+
+import subprocess
+from logger import logger
+
+def is_folder_cli(storage_type, bucket, path):
+    """
+    判断路径是否为目录：
+    1. 如果路径以 '/' 结尾，直接认定为目录。
+    2. 否则，尝试列出该路径下的对象，若有返回则认定为目录。
+    """
+    if path.endswith('/'):
+        return True
+
+    if storage_type == 's3':
+        cmd = f"aws s3 ls s3://{bucket}/{path}/"
+    else:
+        cmd = f"mc ls minio/{bucket}/{path}/"
+
+    logger.debug(f"Executing folder check: {cmd}")
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+
+    is_folder = bool(result.stdout.strip())
+    logger.debug(f"Folder check result for {storage_type}://{bucket}/{path} -> {is_folder}")
+
+    return is_folder
+
+✅ S3 Wrapper（加动态判断）
+
+import subprocess
+from logger import logger
+from utils import is_folder_cli
+
+def s3_copy(bucket, key, local_path, download=True):
+    is_folder = is_folder_cli('s3', bucket, key)
+    recursive_flag = " --recursive" if is_folder else ""
+
+    if download:
+        cmd = f"aws s3 cp s3://{bucket}/{key} {local_path}{recursive_flag}"
+        logger.info(f"Downloading from S3: {cmd}")
+    else:
+        cmd = f"aws s3 cp {local_path} s3://{bucket}/{key}{recursive_flag}"
+        logger.info(f"Uploading to S3: {cmd}")
+
+    subprocess.run(cmd, shell=True, check=True)
+
+def s3_list(bucket, prefix):
+    cmd = f"aws s3 ls s3://{bucket}/{prefix}"
+    logger.info(f"Listing S3 objects: {cmd}")
+
+    result = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
+    return [line for line in result.stdout.strip().split("\n") if line]
+
+✅ MinIO Wrapper（加动态判断）
+
+import subprocess
+from logger import logger
+from utils import is_folder_cli
+
+def minio_copy(bucket, key, local_path, download=True):
+    is_folder = is_folder_cli('minio', bucket, key)
+    recursive_flag = " --recursive" if is_folder else ""
+
+    if download:
+        cmd = f"mc cp{recursive_flag} minio/{bucket}/{key} {local_path}"
+        logger.info(f"Downloading from MinIO: {cmd}")
+    else:
+        cmd = f"mc cp{recursive_flag} {local_path} minio/{bucket}/{key}"
+        logger.info(f"Uploading to MinIO: {cmd}")
+
+    subprocess.run(cmd, shell=True, check=True)
+
+def minio_list(bucket, prefix):
+    cmd = f"mc ls minio/{bucket}/{prefix}"
+    logger.info(f"Listing MinIO objects: {cmd}")
+
+    result = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
+    return [line for line in result.stdout.strip().split("\n") if line]
+
+✅ 说明
+
+场景	行为
+用户路径以 / 结尾	直接认定为目录，加 --recursive
+用户路径不带 /	执行 CLI 检查，是否存在下层对象，自动判断是否加 --recursive
+
+如果你需要：
+	•	整个项目的压缩包 ✅
+	•	使用文档 ✅
+	•	Docker 镜像部署指导 ✅
+
+随时告诉我，我可以帮你一键打包！需要我现在帮你生成吗？😊
