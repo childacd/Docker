@@ -1,0 +1,305 @@
+非常感谢你确认需求，下面我帮你整理完整的项目文件结构与代码清单，包括：
+	•	S3 Wrapper（改成 AWS CLI）
+	•	MinIO Wrapper（保持 mc CLI）
+	•	API（支持 Copy、List，带并发隔离、Request ID、日志、Swagger 示例）
+	•	日志模块（支持按天切割）
+	•	Dockerfile、docker-compose
+	•	压力测试脚本
+	•	CI/CD Pipeline 配置
+
+📂 项目结构
+
+project/
+├── app.py               # FastAPI 主程序
+├── s3_wrapper.py        # S3 操作封装 (CLI)
+├── minio_wrapper.py     # MinIO 操作封装 (CLI)
+├── logger.py            # 日志模块（按天切割）
+├── requirements.txt     # Python 依赖
+├── Dockerfile           # Docker 镜像配置
+├── docker-compose.yml   # Docker Compose 配置
+├── load_test.py         # 并发请求压力测试脚本
+├── .env                 # 环境变量配置（不进版本库）
+└── .github/
+    └── workflows/
+        └── docker-deploy.yml  # CI/CD Pipeline
+
+✅ 详细代码文件
+
+1. app.py (主 API)
+
+👉 支持 Copy、List、Request ID、临时目录隔离、CLI 调用。
+
+import os
+import uuid
+import shutil
+import subprocess
+from fastapi import FastAPI, HTTPException, Body
+from pydantic import BaseModel, Field
+from logger import logger
+from s3_wrapper import s3_copy, s3_list
+from minio_wrapper import minio_copy, minio_list
+
+app = FastAPI()
+
+class CopyRequest(BaseModel):
+    source_type: str = Field(..., example="s3")
+    source_bucket: str = Field(..., example="source-bucket")
+    source_object: str = Field(..., example="folder/")
+    destination_type: str = Field(..., example="minio")
+    destination_bucket: str = Field(..., example="dest-bucket")
+    destination_object: str = Field(..., example="backup-folder/")
+
+@app.post("/copy")
+async def copy_file(copy_request: CopyRequest = Body(..., example={
+    "source_type": "s3",
+    "source_bucket": "source-bucket",
+    "source_object": "my-folder/",
+    "destination_type": "minio",
+    "destination_bucket": "dest-bucket",
+    "destination_object": "backup-folder/"
+})):
+    logger.info(f"📥 Received copy request: {copy_request.dict()}")
+
+    request_id = str(uuid.uuid4())
+    local_temp_dir = f"/tmp/copy_{request_id}"
+    os.makedirs(local_temp_dir, exist_ok=True)
+
+    try:
+        local_path = os.path.join(local_temp_dir, os.path.basename(copy_request.source_object.rstrip("/")))
+
+        # 下载
+        if copy_request.source_type == "s3":
+            s3_copy(copy_request.source_bucket, copy_request.source_object, local_path, download=True)
+        elif copy_request.source_type == "minio":
+            minio_copy(copy_request.source_bucket, copy_request.source_object, local_path, download=True)
+        else:
+            raise Exception("Unsupported source type")
+
+        # 上传
+        if copy_request.destination_type == "s3":
+            s3_copy(copy_request.destination_bucket, copy_request.destination_object, local_path, download=False)
+        elif copy_request.destination_type == "minio":
+            minio_copy(copy_request.destination_bucket, copy_request.destination_object, local_path, download=False)
+        else:
+            raise Exception("Unsupported destination type")
+
+        logger.info("✅ Copy completed successfully.")
+        return {"message": "Copy completed successfully.", "request_id": request_id}
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Command failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Command failed: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        try:
+            if os.path.exists(local_temp_dir):
+                shutil.rmtree(local_temp_dir)
+                logger.info(f"🧹 Temporary directory {local_temp_dir} cleaned up.")
+        except Exception as cleanup_error:
+            logger.warning(f"Temporary directory cleanup failed: {cleanup_error}")
+
+@app.post("/list")
+async def list_objects(copy_request: CopyRequest):
+    logger.info(f"📥 Received list request: {copy_request.dict()}")
+
+    try:
+        if copy_request.source_type == "s3":
+            object_list = s3_list(copy_request.source_bucket, copy_request.source_object)
+        elif copy_request.source_type == "minio":
+            object_list = minio_list(copy_request.source_bucket, copy_request.source_object)
+        else:
+            raise Exception("Unsupported source type")
+
+        logger.info("✅ List completed successfully.")
+        return {"objects": object_list}
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f"List command failed: {e}")
+        raise HTTPException(status_code=500, detail=f"List command failed: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+2. s3_wrapper.py (AWS CLI 操作封装)
+
+import subprocess
+from logger import logger
+
+def s3_copy(bucket, key, local_path, download=True):
+    if download:
+        cmd = f"aws s3 cp s3://{bucket}/{key} {local_path} --recursive"
+        logger.info(f"Downloading from S3: {cmd}")
+    else:
+        cmd = f"aws s3 cp {local_path} s3://{bucket}/{key} --recursive"
+        logger.info(f"Uploading to S3: {cmd}")
+
+    subprocess.run(cmd, shell=True, check=True)
+
+def s3_list(bucket, prefix):
+    cmd = f"aws s3 ls s3://{bucket}/{prefix} --recursive"
+    logger.info(f"Listing S3 objects: {cmd}")
+
+    result = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
+    return [line for line in result.stdout.strip().split("\n") if line]
+
+3. minio_wrapper.py (MinIO CLI 操作封装)
+
+import subprocess
+from logger import logger
+
+def minio_copy(bucket, key, local_path, download=True):
+    if download:
+        cmd = f"mc cp --recursive minio/{bucket}/{key} {local_path}"
+        logger.info(f"Downloading from MinIO: {cmd}")
+    else:
+        cmd = f"mc cp --recursive {local_path} minio/{bucket}/{key}"
+        logger.info(f"Uploading to MinIO: {cmd}")
+
+    subprocess.run(cmd, shell=True, check=True)
+
+def minio_list(bucket, prefix):
+    cmd = f"mc ls --recursive minio/{bucket}/{prefix}"
+    logger.info(f"Listing MinIO objects: {cmd}")
+
+    result = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
+    return [line for line in result.stdout.strip().split("\n") if line]
+
+4. logger.py (支持日志切割)
+
+import logging
+from logging.handlers import TimedRotatingFileHandler
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+log_dir = "logs"
+os.makedirs(log_dir, exist_ok=True)
+
+log_file = os.path.join(log_dir, "app.log")
+
+file_handler = TimedRotatingFileHandler(log_file, when="midnight", interval=1, backupCount=7)
+file_handler.suffix = "%Y-%m-%d"
+file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+
+logging.basicConfig(
+    level=log_level,
+    handlers=[
+        file_handler,
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
+5. requirements.txt
+
+fastapi
+uvicorn
+python-dotenv
+
+6. Dockerfile
+
+FROM python:3.9
+
+WORKDIR /app
+
+COPY . /app
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+
+7. docker-compose.yml
+
+version: "3"
+services:
+  copy-service:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - LOG_LEVEL=DEBUG
+
+8. load_test.py (压力测试)
+
+import requests
+import threading
+
+URL = "http://your-ec2-ip:8000/copy"
+
+payload = {
+    "source_type": "minio",
+    "source_bucket": "your-bucket",
+    "source_object": "your-folder/",
+    "destination_type": "s3",
+    "destination_bucket": "your-dest-bucket",
+    "destination_object": "backup/"
+}
+
+def send_request():
+    response = requests.post(URL, json=payload)
+    print(response.status_code, response.json())
+
+threads = []
+for i in range(10):
+    t = threading.Thread(target=send_request)
+    threads.append(t)
+    t.start()
+
+for t in threads:
+    t.join()
+
+print("🚀 并发请求完成")
+
+9. .github/workflows/docker-deploy.yml
+
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install Dependencies
+      run: pip install -r requirements.txt
+
+    - name: Run Lint
+      run: |
+        pip install flake8
+        flake8 .
+
+    - name: Build Docker Image
+      run: docker build -t your-dockerhub-username/copy-service:latest .
+
+    - name: Push Docker Image
+      run: |
+        echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+        docker push your-dockerhub-username/copy-service:latest
+
+✅ 如果你同意，我可以帮你：
+	1.	补一个健康检查 API（/health）
+	2.	帮你写 .env 示例
+	3.	帮你写部署文档
+
+要继续帮你做吗？😊
