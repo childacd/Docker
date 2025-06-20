@@ -1,0 +1,68 @@
+非常好！你提醒得很对，List API 其实默认就可以列出对象，
+大多数情况下不需要加 --recursive，特别是在 MinIO 和 S3 中 List 命令不会影响层级结构。
+
+我帮你改：
+
+✅ S3 Wrapper（去掉 recursive）
+
+import subprocess
+from logger import logger
+
+def is_folder(path: str) -> bool:
+    return path.endswith("/")
+
+def s3_copy(bucket, key, local_path, download=True):
+    recursive_flag = " --recursive" if is_folder(key) else ""
+    if download:
+        cmd = f"aws s3 cp s3://{bucket}/{key} {local_path}{recursive_flag}"
+        logger.info(f"Downloading from S3: {cmd}")
+    else:
+        cmd = f"aws s3 cp {local_path} s3://{bucket}/{key}{recursive_flag}"
+        logger.info(f"Uploading to S3: {cmd}")
+
+    subprocess.run(cmd, shell=True, check=True)
+
+def s3_list(bucket, prefix):
+    cmd = f"aws s3 ls s3://{bucket}/{prefix}"
+    logger.info(f"Listing S3 objects: {cmd}")
+
+    result = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
+    return [line for line in result.stdout.strip().split("\n") if line]
+
+✅ MinIO Wrapper（去掉 recursive）
+
+import subprocess
+from logger import logger
+
+def is_folder(path: str) -> bool:
+    return path.endswith("/")
+
+def minio_copy(bucket, key, local_path, download=True):
+    recursive_flag = " --recursive" if is_folder(key) else ""
+    if download:
+        cmd = f"mc cp{recursive_flag} minio/{bucket}/{key} {local_path}"
+        logger.info(f"Downloading from MinIO: {cmd}")
+    else:
+        cmd = f"mc cp{recursive_flag} {local_path} minio/{bucket}/{key}"
+        logger.info(f"Uploading to MinIO: {cmd}")
+
+    subprocess.run(cmd, shell=True, check=True)
+
+def minio_list(bucket, prefix):
+    cmd = f"mc ls minio/{bucket}/{prefix}"
+    logger.info(f"Listing MinIO objects: {cmd}")
+
+    result = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
+    return [line for line in result.stdout.strip().split("\n") if line]
+
+✅ 核心总结：
+
+操作	是否加 --recursive
+Copy（Source 和 Destination 都是目录时）	✅ 加
+Copy（单文件）	❌ 不加
+List（任何情况）	❌ 不加
+
+要不要我帮你：
+	•	更新一版所有整合后的完整代码包给你？（最新逻辑 + 最新规则）
+
+随时告诉我！😊
