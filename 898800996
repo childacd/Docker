@@ -1,0 +1,232 @@
+好的，下面我帮你全部整理好：
+
+📄 完整 FastAPI Swagger 参数改进
+
+✅ Python 参数注解
+
+更新你的 CopyRequest 模型：
+
+from pydantic import BaseModel, Field
+
+class CopyRequest(BaseModel):
+    source_type: str = Field(..., example="minio", description="Source storage type: 'minio' or 's3'")
+    source_bucket: str = Field(..., example="my-minio-bucket", description="Source bucket name")
+    source_object: str = Field(..., example="source-folder/", description="Source path. Add '/' at the end to copy only folder content, omit '/' to copy the folder itself.")
+    destination_type: str = Field(..., example="s3", description="Destination storage type: 'minio' or 's3'")
+    destination_bucket: str = Field(..., example="my-s3-bucket", description="Destination bucket name")
+    destination_object: str = Field(..., example="target-folder/", description="Destination path. Add '/' at the end to copy only folder content, omit '/' to copy the folder itself.")
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "source_type": "minio",
+                "source_bucket": "my-minio-bucket",
+                "source_object": "source-folder/",
+                "destination_type": "s3",
+                "destination_bucket": "my-s3-bucket",
+                "destination_object": "target-folder/"
+            },
+            "description": (
+                "📌 Path Usage Guide:\n"
+                "- If source path ends with '/', only folder content will be copied.\n"
+                "- If source path does not end with '/', the whole folder (including its name) will be copied.\n"
+                "- Destination path format is flexible.\n"
+                "- Recursive flag is automatically handled."
+            )
+        }
+
+这样，Swagger 页面会自动显示：
+	•	示例参数 ✅
+	•	参数说明 ✅
+	•	路径用法提示 ✅
+
+✅ Postman Collection 示例
+
+我帮你写一个基础 Postman Collection，导入即可使用：
+
+{
+    "info": {
+        "name": "MinIO S3 Copy API",
+        "_postman_id": "example-id-1234",
+        "description": "Postman Collection for testing MinIO & S3 Copy API.\n\nPath usage:\n- Source ends with '/' : copy folder content only.\n- Source without '/' : copy whole folder including its name.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Copy Folder (MinIO -> S3)",
+            "request": {
+                "method": "POST",
+                "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"source_type\": \"minio\",\n  \"source_bucket\": \"my-minio-bucket\",\n  \"source_object\": \"source-folder/\",\n  \"destination_type\": \"s3\",\n  \"destination_bucket\": \"my-s3-bucket\",\n  \"destination_object\": \"target-folder/\"\n}"
+                },
+                "url": {
+                    "raw": "http://localhost:8000/copy",
+                    "protocol": "http",
+                    "host": ["localhost"],
+                    "port": "8000",
+                    "path": ["copy"]
+                }
+            }
+        },
+        {
+            "name": "List Bucket (MinIO)",
+            "request": {
+                "method": "POST",
+                "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"storage_type\": \"minio\",\n  \"bucket\": \"my-minio-bucket\",\n  \"prefix\": \"\"\n}"
+                },
+                "url": {
+                    "raw": "http://localhost:8000/list",
+                    "protocol": "http",
+                    "host": ["localhost"],
+                    "port": "8000",
+                    "path": ["list"]
+                }
+            }
+        }
+    ]
+}
+
+✅ 你可以将这个 JSON 保存为 MinIO_S3_Copy.postman_collection.json，然后直接导入 Postman 使用。
+
+✅ 英文版使用文档
+
+# 📦 MinIO & S3 File Copy Service - English User Guide
+
+## Project Overview
+This project provides a FastAPI-based file copy service, supporting:
+- Copying files or folders between MinIO and AWS S3
+- Flexible path handling (support with or without trailing slash)
+- Concurrent request safety with isolated temporary directories using request IDs
+- Daily log rotation
+- Recursive folder copy with automatic recursive flag handling
+- MinIO operations via `mc` CLI and AWS S3 operations via `aws s3` CLI
+- List API to display buckets and objects
+
+---
+
+## Project Structure
+
+```text
+project/
+├── app.py
+├── s3_wrapper.py
+├── minio_wrapper.py
+├── utils.py
+├── logger.py
+├── requirements.txt
+├── Dockerfile
+├── docker-compose.yml
+├── load_test.py
+├── test_integration.py
+└── .github/
+    └── workflows/
+        └── docker-deploy.yml
+
+Environment Setup
+	•	awscli installed and properly configured with EC2 instance profile for S3 access.
+	•	mc installed and MinIO alias configured.
+
+mc alias set minio http://minio-url:9000 minio-access-key minio-secret-key
+
+How to Start
+
+1. Install Dependencies
+
+pip install -r requirements.txt
+
+2. Run the Service
+
+python app.py
+
+3. Run with Docker
+
+docker-compose up --build
+
+API Endpoints
+
+📥 1. Copy API
+	•	POST /copy
+	•	Request Example:
+
+{
+    "source_type": "minio",
+    "source_bucket": "my-minio-bucket",
+    "source_object": "source-folder/",
+    "destination_type": "s3",
+    "destination_bucket": "my-s3-bucket",
+    "destination_object": "target-folder/"
+}
+
+	•	Path Usage Guide:
+	•	If source path ends with /, only the folder content will be copied.
+	•	If source path does not end with /, the entire folder (including its name) will be copied.
+	•	Destination path format is flexible.
+	•	Recursive flag is automatically handled.
+
+📂 2. List API
+	•	POST /list
+	•	Request Example:
+
+{
+    "storage_type": "minio",
+    "bucket": "my-minio-bucket",
+    "prefix": "source-folder/"
+}
+
+Log Configuration
+
+Set log level via environment variable:
+
+export LOG_LEVEL=DEBUG
+
+Logs are saved under logs directory and rotated daily.
+
+Load Testing
+
+Run concurrent request tests using:
+
+python load_test.py
+
+Supports custom:
+	•	Request count
+	•	Concurrency level
+	•	Test data
+
+CI/CD Pipeline
+
+The project includes a sample GitHub Actions workflow:
+
+.github/workflows/docker-deploy.yml
+
+Supports automatic Docker build and push.
+
+Path Behavior Summary
+
+Case	Source Ends With /	Destination Ends With /	Recursive	Result
+1	✅ Yes	✅ Yes	✅ Yes	Copy folder content only to the destination path. Source folder itself is not copied.
+2	✅ Yes	❌ No	✅ Yes	Copy folder content only to the destination path. Source folder itself is not copied.
+3	❌ No	✅ Yes	✅ Yes	Copy the entire folder (including folder name) to the destination path.
+4	❌ No	❌ No	✅ Yes	Copy the entire folder (including folder name) to the destination path.
+
+If you want, I can help you:
+	•	Package the full project files
+	•	Write a CI/CD deployment guide
+	•	Prepare more Postman samples
+
+Let me know if you need this! 😊
+
+我可以马上帮你把：
+	•	完整 FastAPI Swagger 修改好的代码
+	•	Postman Collection 文件
+	•	中英文文档
+
+打包整理发给你，需要吗？
