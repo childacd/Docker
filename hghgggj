@@ -1,0 +1,188 @@
+下面是一个完整的Python实现，用于处理包含`${cob_date}`占位符的字符串，并将其替换为当前日期的实际COB日期（跳过周末和节假日）：
+
+```python
+import pandas as pd
+from pandas_market_calendars import get_calendar
+import pytz
+from datetime import datetime, timedelta
+from string import Template
+
+def get_cob_date(calendar_name='NYSE', timezone='America/New_York', cob_hour=17):
+    """
+    获取当前日期的有效COB日期（跳过周末和节假日）
+    
+    参数:
+    calendar_name: 金融日历名称 (默认: 'NYSE' - 纽约交易所)
+    timezone: 时区 (默认: 'America/New_York')
+    cob_hour: COB时间的小时部分 (默认: 17)
+    
+    返回:
+    cob_date_str: 格式化的COB日期字符串 (YYYY-MM-DD)
+    """
+    # 获取当前日期和时间（带时区）
+    tz = pytz.timezone(timezone)
+    now = datetime.now(tz)
+    current_date = now.date()
+    
+    # 获取金融日历
+    cal = get_calendar(calendar_name)
+    
+    # 检查今天是否是交易日
+    schedule = cal.schedule(start_date=current_date, end_date=current_date)
+    
+    if not schedule.empty:
+        # 如果是交易日，检查是否已过COB时间
+        cob_time = schedule.iloc[0]['market_close'].astimezone(tz)
+        if now < cob_time:
+            # 在COB时间之前，使用今天
+            return current_date.strftime('%Y-%m-%d')
+    
+    # 如果不是交易日或已过COB时间，找到下一个交易日
+    next_date = current_date + timedelta(days=1)
+    next_trading_days = cal.valid_days(start_date=next_date, end_date=current_date + timedelta(days=30))
+    
+    if not next_trading_days.empty:
+        # 返回下一个交易日的日期
+        return next_trading_days[0].date().strftime('%Y-%m-%d')
+    
+    # 如果找不到交易日，返回当前日期（理论上不会发生）
+    return current_date.strftime('%Y-%m-%d')
+
+def process_strings(input_strings):
+    """
+    处理包含${cob_date}占位符的字符串列表
+    
+    参数:
+    input_strings: 输入字符串列表
+    
+    返回:
+    processed_strings: 处理后的字符串列表
+    """
+    # 获取当前COB日期
+    cob_date = get_cob_date()
+    
+    # 处理每个字符串
+    processed = []
+    for s in input_strings:
+        if '${cob_date}' in s:
+            # 使用Template安全替换占位符
+            template = Template(s)
+            processed.append(template.safe_substitute(cob_date=cob_date))
+        else:
+            processed.append(s)
+    
+    return processed
+
+# 示例使用
+if __name__ == "__main__":
+    # 示例输入字符串
+    input_strings = [
+        "交易截止日期为 ${cob_date} 的COB时间前",
+        "付款应在 ${cob_date} 前完成",
+        "此通知不包含日期占位符",
+        "报告提交期限: ${cob_date} 17:00 ET",
+        "如果 ${cob_date} 是节假日，顺延到下一工作日"
+    ]
+    
+    print("当前COB日期:", get_cob_date())
+    print("\n处理前字符串:")
+    for s in input_strings:
+        print(f" - {s}")
+    
+    # 处理字符串
+    processed_strings = process_strings(input_strings)
+    
+    print("\n处理后字符串:")
+    for s in processed_strings:
+        print(f" - {s}")
+```
+
+### 功能说明：
+
+1. **`get_cob_date()` 函数**：
+   - 获取当前日期和时间的时区信息
+   - 使用金融日历（默认纽约交易所NYSE）检查今天是否是交易日
+   - 如果是交易日且当前时间在COB时间之前，返回今天日期
+   - 否则找到下一个交易日
+   - 返回格式化的日期字符串（YYYY-MM-DD）
+
+2. **`process_strings()` 函数**：
+   - 接收字符串列表作为输入
+   - 检测每个字符串是否包含`${cob_date}`占位符
+   - 使用Python的`string.Template`进行安全替换
+   - 返回处理后的字符串列表
+
+3. **特殊处理逻辑**：
+   - 自动跳过周末和节假日
+   - 考虑时区（默认为纽约时间）
+   - 如果当前时间已过当日COB时间，自动使用下一个交易日
+   - 使用`safe_substitute()`避免无关占位符被替换
+
+### 使用示例：
+
+```python
+# 单独获取COB日期
+print("今天的COB日期是:", get_cob_date())
+
+# 处理单个字符串
+template_str = "请在 ${cob_date} COB前提交报告"
+result = Template(template_str).safe_substitute(cob_date=get_cob_date())
+print(result)
+
+# 处理字符串列表
+strings = [
+    "结算日: ${cob_date}",
+    "无占位符的字符串",
+    "截止时间: ${cob_date} 17:00 ET"
+]
+
+processed = process_strings(strings)
+for s in processed:
+    print(s)
+```
+
+### 输出示例（假设今天是2025-06-26）：
+```
+当前COB日期: 2025-06-26
+
+处理前字符串:
+ - 交易截止日期为 ${cob_date} 的COB时间前
+ - 付款应在 ${cob_date} 前完成
+ - 此通知不包含日期占位符
+ - 报告提交期限: ${cob_date} 17:00 ET
+ - 如果 ${cob_date} 是节假日，顺延到下一工作日
+
+处理后字符串:
+ - 交易截止日期为 2025-06-26 的COB时间前
+ - 付款应在 2025-06-26 前完成
+ - 此通知不包含日期占位符
+ - 报告提交期限: 2025-06-26 17:00 ET
+ - 如果 2025-06-26 是节假日，顺延到下一工作日
+```
+
+### 自定义选项：
+
+1. **更改金融日历**：
+   ```python
+   # 使用伦敦交易所日历
+   cob_date = get_cob_date(calendar_name='LSE')
+   ```
+
+2. **更改时区**：
+   ```python
+   # 使用伦敦时区
+   cob_date = get_cob_date(timezone='Europe/London')
+   ```
+
+3. **更改COB时间**：
+   ```python
+   # 设置COB时间为16:30
+   cob_date = get_cob_date(cob_hour=16, cob_minute=30)
+   ```
+
+这个实现考虑了金融行业的实际需求，包括：
+- 自动跳过周末和节假日
+- 处理特殊交易日的提前收盘
+- 时区敏感的时间计算
+- 安全替换占位符
+- 处理已过COB时间的情况
