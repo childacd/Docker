@@ -1,0 +1,88 @@
+好的，我明白了。下面是根据您的要求修改后的简化实现：
+
+```python
+import pandas as pd
+from pandas_market_calendars import get_calendar
+from datetime import datetime
+from string import Template
+
+def get_cob_date(calendar_name='NYSE'):
+    """
+    获取当前日期的有效COB日期（跳过周末和节假日）
+    简化版：只考虑日期，不处理时间，如果今天不是交易日则使用上一个交易日
+    
+    参数:
+    calendar_name: 金融日历名称 (默认: 'NYSE' - 纽约交易所)
+    
+    返回:
+    cob_date_str: 格式化的COB日期字符串 (YYYY-MM-DD)
+    """
+    # 获取当前日期
+    current_date = datetime.now().date()
+    
+    # 获取金融日历
+    cal = get_calendar(calendar_name)
+    
+    # 检查今天是否是交易日
+    schedule = cal.schedule(start_date=current_date, end_date=current_date)
+    
+    if not schedule.empty:
+        # 如果是交易日，直接使用今天
+        return current_date.strftime('%Y-%m-%d')
+    
+    # 如果不是交易日，找到上一个交易日
+    prev_date = current_date
+    while True:
+        prev_date -= pd.Timedelta(days=1)
+        prev_schedule = cal.schedule(start_date=prev_date, end_date=prev_date)
+        if not prev_schedule.empty:
+            return prev_date.strftime('%Y-%m-%d')
+
+def process_strings(input_strings):
+    """
+    处理包含${cob_date}占位符的字符串列表
+    
+    参数:
+    input_strings: 输入字符串列表
+    
+    返回:
+    processed_strings: 处理后的字符串列表
+    """
+    # 获取当前COB日期
+    cob_date = get_cob_date()
+    
+    # 处理每个字符串
+    processed = []
+    for s in input_strings:
+        if '${cob_date}' in s:
+            # 使用Template安全替换占位符
+            template = Template(s)
+            processed.append(template.safe_substitute(cob_date=cob_date))
+        else:
+            processed.append(s)
+    
+    return processed
+
+# 示例使用
+if __name__ == "__main__":
+    # 示例输入字符串
+    input_strings = [
+        "交易截止日期为 ${cob_date}",
+        "请于 ${cob_date} 前完成",
+        "此通知不包含日期占位符",
+        "报告提交日期: ${cob_date}",
+        "如果 ${cob_date} 是节假日，顺延到下一工作日"
+    ]
+    
+    print("当前COB日期:", get_cob_date())
+    print("\n处理前字符串:")
+    for s in input_strings:
+        print(f" - {s}")
+    
+    # 处理字符串
+    processed_strings = process_strings(input_strings)
+    
+    print("\n处理后字符串:")
+    for s in processed_strings:
+        print(f" - {s}")
+```
