@@ -1,0 +1,62 @@
+太好了！下面是一个支持命令行参数的完整脚本，用于：
+	•	指定 --input CSV 文件路径
+	•	指定 --output 输出文件路径
+	•	指定 --path 外部路径变量（会截取并格式化为模板变量）
+
+✅ 支持命令行参数的 Python 脚本
+
+import csv
+import argparse
+
+def parse_project_id(path: str, prefix: str = "/home/user/") -> str:
+    # 去除前缀和首尾斜杠，并替换中间的斜杠
+    if path.startswith(prefix):
+        path = path[len(prefix):]
+    return path.strip("/").replace("/", "_")
+
+def main():
+    parser = argparse.ArgumentParser(description="Generate text file from CSV and path info using template.")
+    parser.add_argument("--input", required=True, help="Path to the input CSV file")
+    parser.add_argument("--output", required=True, help="Path to the output text file")
+    parser.add_argument("--path", required=True, help="External path to extract project ID")
+
+    args = parser.parse_args()
+
+    project_id = parse_project_id(args.path)
+
+    template = "{project_id} - {name} is {age} years old and lives in {city}."
+
+    with open(args.input, mode='r', encoding='utf-8') as csvfile, \
+         open(args.output, mode='w', encoding='utf-8') as outfile:
+
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            output_line = template.format(project_id=project_id, **row)
+            outfile.write(output_line + "\n")
+
+if __name__ == "__main__":
+    main()
+
+🧪 使用方式
+
+python generate_from_csv.py \
+  --input input.csv \
+  --output result.txt \
+  --path /home/user/data/project/version1/
+
+✅ 输出示例（result.txt）
+
+data_project_version1 - Alice is 30 years old and lives in New York.
+data_project_version1 - Bob is 25 years old and lives in San Francisco.
+
+✅ 提示
+	•	模板中的字段必须和 CSV 列名匹配。
+	•	如果你想让 template 从外部传参或者配置文件中读取，也可以加个 --template 参数。
+	•	路径处理逻辑如果不只限于 /home/user/ 前缀，也可以扩展为支持正则提取。
+
+需要我帮你加：
+	•	logging 日志输出？
+	•	支持多语言模板？
+	•	多个 path 生成多个文件？
+
+你可以随时说！
