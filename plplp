@@ -1,0 +1,78 @@
+非常理解你的场景。
+
+你现在的需求可以概括为：
+
+✅ 场景说明
+
+	•	真实运行时：Query 中的 {CobDate} / {PreCobDate} 是按天变化的（每天执行一次）。
+	•	测试运行时：你用 schedule 每 5 分钟 执行一次，想看到结果有“不同”，便于验证流程。
+	•	但是 5 分钟内 CobDate 是不会变的，所以你想要一个每 5 分钟变一次的 placeholder 值，能帮你区分这次和上次执行。
+
+✅ 解决方案：引入 {RunSlot} 占位符
+
+我们可以引入一个新的 placeholder：
+
+RunSlot 的定义：
+
+	•	当前时间每 5 分钟分一个区间：
+	•	00:00 - 00:04 → 0000
+	•	00:05 - 00:09 → 0005
+	•	00:10 - 00:14 → 0010
+	•	…
+	•	总之每次运行时你会得到不同的 slot，便于识别。
+
+✅ 新增函数：get_run_slot(interval=5)
+
+def get_run_slot(interval: int = 5) -> str:
+    """Returns the HHMM slot rounded down by interval minutes (e.g. 5-min slots)"""
+    now = datetime.now()
+    rounded_minute = (now.minute // interval) * interval
+    return now.strftime("%H") + f"{rounded_minute:02d}"
+
+例如现在是 13:07，则：
+
+get_run_slot() → "1305"
+
+✅ 更新 replace_placeholders 支持 {RunSlot}
+
+def replace_placeholders(s: str) -> str:
+    def replacer(match):
+        key = match.group(1).lower()
+        if key == "cobdate":
+            return get_cob_date()
+        elif key == "precobdate":
+            return get_previous_cob_date()
+        elif key == "currentminute":
+            return get_current_minute()
+        elif key == "runslot":
+            return get_run_slot()
+        else:
+            return match.group(0)  # keep unchanged
+
+    return re.sub(r"\{(.*?)\}", replacer, s, flags=re.IGNORECASE)
+
+✅ 示例
+
+query_template = "SELECT * FROM table WHERE cob_date = '{CobDate}' AND run_id = '{RunSlot}'"
+print(replace_placeholders(query_template))
+
+如果当前是 2025-07-05 13:07：
+
+SELECT * FROM table WHERE cob_date = '2025-07-04' AND run_id = '1305'
+
+5 分钟后会变成：
+
+SELECT * FROM table WHERE cob_date = '2025-07-04' AND run_id = '1310'
+
+✅ 单元测试也可以加上：
+
+def test_replace_placeholder_runslot(self):
+    s = "Slot: {RunSlot}"
+    result = replace_placeholders(s)
+    self.assertRegex(result, r"Slot: \d{4}")
+
+✅ 补充说明
+
+你也可以把这个 {RunSlot} 放到你后续插入数据库的 partition key 或 job_id 中，用来模拟“今天内的不同运行”。
+
+如果你未来想要精细一点，比如“每小时的 slot”，“每 10 分钟”等，我也可以帮你扩展支持参数。需要的话可以说一声。
