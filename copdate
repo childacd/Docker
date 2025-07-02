@@ -1,0 +1,74 @@
+明白了，我们把所有相关的 CopDate 改成 CobDate（Close of Business Date 的意思），包括变量名、方法名、字符串占位符等。
+
+✅ 修改后的功能说明
+
+	1.	get_cob_date()
+返回今天的 COB 日期（如果今天是周一至周五就取今天，如果是周六或周日就取上周五）。
+	2.	get_previous_cob_date()
+在当前 COB 日期的基础上，返回前一个 COB 日期。
+	3.	replace_placeholders(s: str)
+替换字符串中 {CobDate} 和 {PreCobDate} 占位符。
+
+✅ 修改后的代码实现
+
+from datetime import datetime, timedelta
+import re
+
+def get_cob_date(today: datetime = None) -> str:
+    if today is None:
+        today = datetime.today()
+
+    weekday = today.weekday()  # Monday is 0, Sunday is 6
+    if weekday >= 5:  # Saturday (5) or Sunday (6)
+        delta = weekday - 4  # move back to Friday
+        cob_date = today - timedelta(days=delta)
+    else:
+        cob_date = today
+
+    return cob_date.strftime("%Y-%m-%d")
+
+def get_previous_cob_date(today: datetime = None) -> str:
+    # First get today's CobDate
+    current_cob = datetime.strptime(get_cob_date(today), "%Y-%m-%d")
+    # Move back one day and re-calculate CobDate
+    previous_day = current_cob - timedelta(days=1)
+    return get_cob_date(previous_day)
+
+def replace_placeholders(s: str) -> str:
+    def replacer(match):
+        key = match.group(1)
+        if key == "CobDate":
+            return get_cob_date()
+        elif key == "PreCobDate":
+            return get_previous_cob_date()
+        else:
+            return match.group(0)  # keep unchanged
+
+    return re.sub(r"\{(.*?)\}", replacer, s)
+
+✅ 测试代码
+
+def test():
+    print("Test 1: get_cob_date")
+    print("Today is:", datetime.today().strftime("%Y-%m-%d"))
+    print("CobDate:", get_cob_date())
+
+    print("\nTest 2: get_previous_cob_date")
+    print("Previous CobDate:", get_previous_cob_date())
+
+    print("\nTest 3: replace_placeholders")
+    s1 = "The report date is {CobDate}, and the previous one is {PreCobDate}."
+    print("Original:", s1)
+    print("Replaced:", replace_placeholders(s1))
+
+    s2 = "No placeholder here."
+    print("\nOriginal:", s2)
+    print("Replaced:", replace_placeholders(s2))
+
+    s3 = "Unknown key: {SomethingElse}"
+    print("\nOriginal:", s3)
+    print("Replaced:", replace_placeholders(s3))
+
+test()
+
+需要我帮你加上 unittest 或 pytest 测试用例框架吗？还是你想把这个打包成一个模块/工具类？
