@@ -1,0 +1,56 @@
+好的，我们来扩展这个功能，新增一个 获取当前分钟（0~59） 的占位符：
+
+✅ 你要的新功能
+
+在原有 {CobDate} / {PreCobDate} 替换的基础上，新增支持：
+	•	{CurrentMinute}（忽略大小写）：会被替换为当前分钟数，格式是 00~59，始终是两位数字。
+
+例如：
+
+s = "Time marker: {CurrentMinute}"
+→ "Time marker: 07"  # 如果当前是 08:07
+
+✅ 新增函数：get_current_minute()
+
+def get_current_minute() -> str:
+    return datetime.now().strftime("%M")
+
+✅ 更新后的 replace_placeholders() 方法
+
+def replace_placeholders(s: str) -> str:
+    def replacer(match):
+        key = match.group(1).lower()
+        if key == "cobdate":
+            return get_cob_date()
+        elif key == "precobdate":
+            return get_previous_cob_date()
+        elif key == "currentminute":
+            return get_current_minute()
+        else:
+            return match.group(0)  # keep unchanged
+
+    return re.sub(r"\{(.*?)\}", replacer, s, flags=re.IGNORECASE)
+
+✅ 新增测试用例：测试 {CurrentMinute} 占位符
+
+在 TestCobDateFunctions 里添加一条测试：
+
+def test_replace_placeholder_current_minute(self):
+    s = "The minute is {CurrentMinute}."
+    result = replace_placeholders(s)
+    self.assertRegex(result, r"The minute is \d{2}\.")
+
+✅ 完整测试后的替换例子：
+
+s = "Cob: {CobDate}, Pre: {PreCobDate}, Min: {CurrentMinute}"
+print(replace_placeholders(s))
+
+假设今天是周六 2025-07-05 且当前时间为 08:07，输出将类似：
+
+Cob: 2025-07-04, Pre: 2025-07-03, Min: 07
+
+如果你将来还想支持：
+	•	自定义格式（比如 {CobDate:%Y%m%d}）；
+	•	扩展更多时间字段（比如 {Hour}、{Second}）；
+
+也可以基于这个架构轻松加进去。我可以帮你做成一个更通用的占位符解析器。如果你感兴趣我们可以继续扩展 👍
