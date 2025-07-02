@@ -1,0 +1,11 @@
+def replace_placeholders(s: str) -> str:
+    def replacer(match):
+        key = match.group(1).lower()
+        if key == "cobdate":
+            return get_cob_date()
+        elif key == "precobdate":
+            return get_previous_cob_date()
+        else:
+            return match.group(0)  # keep unchanged
+
+    return re.sub(r"\{(.*?)\}", replacer, s, flags=re.IGNORECASE)
