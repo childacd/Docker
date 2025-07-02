@@ -1,0 +1,134 @@
+好的，我们就把所有的 job_id 替换成你当前系统里实际使用的字段：job_name。以下是已经完成字段替换和同步清理逻辑的 完整真实可运行代码：
+
+✅ 替换说明
+
+	•	job_id → job_name
+	•	JobDef.job_id → JobDef.job_name
+	•	.tag(job_id) → .tag(job_name)
+	•	清理逻辑、比对逻辑、打印日志中都已替换
+
+✅ 更新后的完整代码
+
+import schedule
+import time
+from datetime import datetime, timedelta
+from typing import List
+import re
+
+# ------- placeholder 替换逻辑 -------
+def get_cob_date(today: datetime = None) -> str:
+    if today is None:
+        today = datetime.today()
+    weekday = today.weekday()
+    if weekday >= 5:
+        delta = weekday - 4
+        cob_date = today - timedelta(days=delta)
+    else:
+        cob_date = today
+    return cob_date.strftime("%Y-%m-%d")
+
+def get_previous_cob_date(today: datetime = None) -> str:
+    current_cob = datetime.strptime(get_cob_date(today), "%Y-%m-%d")
+    previous_day = current_cob - timedelta(days=1)
+    return get_cob_date(previous_day)
+
+def get_current_minute() -> str:
+    return datetime.now().strftime("%M")
+
+def get_run_slot(interval: int = 5) -> str:
+    now = datetime.now()
+    rounded_minute = (now.minute // interval) * interval
+    return now.strftime("%H") + f"{rounded_minute:02d}"
+
+def replace_placeholders(s: str) -> str:
+    def replacer(match):
+        key = match.group(1).lower()
+        if key == "cobdate":
+            return get_cob_date()
+        elif key == "precobdate":
+            return get_previous_cob_date()
+        elif key == "currentminute":
+            return get_current_minute()
+        elif key == "runslot":
+            return get_run_slot()
+        else:
+            return match.group(0)
+    return re.sub(r"\{(.*?)\}", replacer, s, flags=re.IGNORECASE)
+
+
+# ------- Job Definition 模拟 -------
+class JobDef:
+    def __init__(self, job_name: str, interval_minutes: int, query_template: str):
+        self.job_name = job_name
+        self.interval_minutes = interval_minutes
+        self.query_template = query_template
+
+
+def fetch_jobs_from_db() -> List[JobDef]:
+    # 模拟从数据库读取的 Job 列表
+    return [
+        JobDef(job_name="job_1", interval_minutes=5,
+               query_template="SELECT * FROM orders WHERE cob_date = '{CobDate}' AND slot = '{RunSlot}'"),
+        JobDef(job_name="job_2", interval_minutes=10,
+               query_template="SELECT * FROM revenue WHERE date = '{CobDate}'"),
+    ]
+
+
+# ------- Job 执行逻辑 -------
+def run_query(job_def: JobDef):
+    rendered_query = replace_placeholders(job_def.query_template)
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Running job '{job_def.job_name}':")
+    print(f"→ {rendered_query}")
+    # 你可以在这里调用实际的数据库接口去执行 SQL
+
+
+# ------- 刷新 Job 的逻辑 -------
+def refresh_jobs():
+    job_defs = fetch_jobs_from_db()
+    db_job_names = {job_def.job_name for job_def in job_defs}
+    schedule_job_names = {tag for job in schedule.jobs for tag in job.tags}
+
+    # -------- 删除已不存在的 job --------
+    stale_job_names = schedule_job_names - db_job_names
+    for job_name in stale_job_names:
+        schedule.clear(job_name)
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Removed job '{job_name}' (no longer in DB)")
+
+    # -------- 添加新 job --------
+    for job_def in job_defs:
+        if job_def.job_name in schedule_job_names:
+            continue  # 已存在，跳过
+
+        schedule.every(job_def.interval_minutes).minutes.do(run_query, job_def=job_def).tag(job_def.job_name)
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Registered job '{job_def.job_name}'")
+
+
+# ------- 启动调度器 -------
+if __name__ == "__main__":
+    refresh_jobs()  # 初次加载 Job
+
+    schedule.every(1).minutes.do(refresh_jobs)  # 定时刷新 Job 定义（测试用 1 分钟）
+
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+
+✅ 输出示例
+
+[13:57:00] Registered job 'job_1'
+[13:57:00] Registered job 'job_2'
+
+[14:00:00] Running job 'job_1':
+→ SELECT * FROM orders WHERE cob_date = '2025-07-04' AND slot = '1400'
+...
+[14:01:00] Removed job 'job_2' (no longer in DB)
+
+✅ 后续建议
+
+如果你希望再支持：
+	•	✅ job 改了 interval 就重新注册（对比 job 的定义是否变了）
+	•	✅ 支持 cron 表达式而非仅按分钟
+	•	✅ 执行日志写入数据库
+	•	✅ asyncio 支持并发运行 Job
+
+我也可以帮你继续增强。有需要就告诉我！
