@@ -1,0 +1,88 @@
+👌 完全理解了。
+
+你现在的执行函数不会抛出异常，而是：
+
+	返回一个结果（比如字符串或布尔值）来表示成功/失败，例如返回 "OK" 或 "FAIL" 或 True / False。
+
+✅ 那我们就要调整 retry 逻辑如下：
+
+	•	不再用 try...except 判断是否失败；
+	•	而是根据函数的 返回值（如 'FAIL'）来判断是否需要重试；
+	•	成功立即返回，失败进入 retry 逻辑；
+	•	和你原来设想的 count 循环基本一致，但加上可选的 backoff 支持。
+
+✅ 改进后的 retry_run_query_by_result() 函数
+
+import time
+from datetime import datetime
+
+def retry_run_query_by_result(job_def, max_retries: int = 3, backoff: bool = True):
+    def log(msg):
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
+
+    # 第一次执行
+    rendered_query = replace_placeholders(job_def.query_template)
+    result = run_query_returning_status(rendered_query, job_def)
+
+    if result == "OK":
+        log(f"Job '{job_def.job_name}' succeeded.")
+        return
+
+    log(f"Job '{job_def.job_name}' failed on first attempt (return={result}).")
+
+    # 重试逻辑
+    for attempt in range(1, max_retries + 1):
+        delay = (2 ** (attempt - 1)) if backoff else 1
+        time.sleep(delay)
+
+        rendered_query = replace_placeholders(job_def.query_template)
+        result = run_query_returning_status(rendered_query, job_def)
+
+        if result == "OK":
+            log(f"Retry {attempt}: Job '{job_def.job_name}' succeeded.")
+            return
+        else:
+            log(f"Retry {attempt} failed (return={result}).")
+
+    log(f"Job '{job_def.job_name}' failed after {max_retries} retries (last return={result}).")
+
+✅ 示例执行函数（你实际的执行逻辑）：
+
+你应该把你真正的 query 执行逻辑包装成如下函数：
+
+def run_query_returning_status(query: str, job_def) -> str:
+    print(f"Executing SQL for job '{job_def.job_name}':\n→ {query}")
+    # 这里返回 'OK' 表示成功，其他值表示失败
+    # 你实际可以执行 SQL 并分析结果决定成功与否
+    return "OK"  # or return "FAIL"
+
+✅ 使用方式：
+
+schedule.every(job_def.interval_minutes).minutes.do(
+    retry_run_query_by_result, job_def=job_def
+).tag(job_def.job_name)
+
+✅ 输出示例（返回值控制）：
+
+[14:15:00] Job 'job_1' failed on first attempt (return=FAIL).
+[14:15:01] Retry 1 failed (return=FAIL).
+[14:15:03] Retry 2: Job 'job_1' succeeded.
+
+或
+
+[14:17:00] Job 'job_2' succeeded.
+
+✅ 总结：现在你拥有的逻辑是
+
+功能	状态
+根据返回值判断是否成功	✅ 支持 'OK' / 'FAIL' / 自定义状态码
+成功立即退出	✅
+失败自动重试	✅ 最多 max_retries 次
+支持指数退避	✅ 默认开启，可设置关闭
+完全兼容你当前逻辑	✅ 不依赖异常机制
+
+如果你返回的不是字符串而是布尔值（如 True/False），也可以轻松支持：
+
+if result is True: ...
+
+你要不要我也改一版支持布尔值返回的？或者想加“只对某些状态码才重试”？告诉我即可。
