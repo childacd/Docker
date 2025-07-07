@@ -1,0 +1,47 @@
+好的，这是一个去掉所有表情并将注释改为英文的版本：
+
+import time
+from datetime import datetime
+
+def retry_on_false(func, *args, retries=2, delay=0, **kwargs):
+    """
+    Call a function with arguments. If it returns False, retry up to a specified number of times.
+
+    Parameters:
+        func: The function to call. Should return True on success, False on failure.
+        *args, **kwargs: Arguments to pass to the function.
+        retries: Maximum number of retries. Default is 2 (for a total of 3 attempts).
+        delay: Time to wait between retries in seconds. Default is 0.
+
+    Returns:
+        True if the function succeeds on any attempt, False if all attempts fail.
+    """
+    # First attempt without any log
+    if func(*args, **kwargs):
+        return True
+
+    # Retry loop with logging
+    for attempt in range(1, retries + 1):
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[{now}] Retry attempt {attempt}...", end=' ')
+        
+        if func(*args, **kwargs):
+            print("Success")
+            return True
+        else:
+            print("Failed")
+            if attempt < retries:
+                time.sleep(delay)
+
+    print("All attempts failed.")
+    return False
+
+Example usage
+
+def my_function(task_name):
+    print(f"    Executing task: {task_name}")
+    return False  # Simulate failure
+
+retry_on_false(my_function, "daily_backup", retries=2, delay=1)
+
+如果你还需要这个函数返回失败次数、记录日志到文件，或者用于异步函数（async def），我也可以为你扩展。需要的话可以继续告诉我。
