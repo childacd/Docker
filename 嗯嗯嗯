@@ -1,0 +1,248 @@
+明白了，你现在的目标可以总结如下：
+
+✅ 你的目标简化版（翻译成开发语言的理解）：
+
+你需要一个 String 替换工具函数，它能：
+	1.	扫描字符串中形如 ${CURRENT_COB_DATE[-N][:FORMAT]} 的变量
+	2.	将 ${...} 替换为实际的日期字符串：
+	•	基准日期来自你传入的 scheduled_next_run（一个 datetime）
+	•	变量名只能是 CURRENT_COB_DATE
+	•	可以有可选的偏移天数 -N（如 -1、-2）
+	•	可以有可选的格式，比如 %Y/%m/%d，否则用默认 %Y-%m-%d
+	3.	调用 get_cob_date 以及 get_cob_date_minus_days 来完成日期逻辑，它们的实现不要改
+	4.	不支持其他变量名，如果变量名非法就抛异常
+
+✅ 推荐设计思路（现代 Python 风格）
+
+我们只需要实现一个：
+
+replace_cob_variables(text: str, scheduled_next_run: datetime) -> str
+
+你提供两个已有函数我们保留：
+
+def get_cob_date(current_date: datetime) -> datetime:
+    ...
+
+def get_cob_date_minus_days(current_date: datetime, days: int, fmt: str = "%Y-%m-%d") -> str:
+    ...
+
+✅ 正式代码实现
+
+import re
+from datetime import datetime
+
+VAR_NAME = "CURRENT_COB_DATE"
+DEFAULT_FMT = "%Y-%m-%d"
+PLACEHOLDER_PATTERN = re.compile(r"\$\{([^}]+)\}")
+
+def replace_cob_variables(text: str, scheduled_next_run: datetime) -> str:
+    def resolve_variable(expr: str) -> str:
+        if not expr.startswith(VAR_NAME):
+            raise ValueError(f"Unsupported variable '{expr}'. Only '${{{VAR_NAME}}}' is supported.")
+
+        minus_days = 0
+        fmt = DEFAULT_FMT
+
+        # 处理 CURRENT_COB_DATE[-N][:FORMAT]
+        rest = expr[len(VAR_NAME):]
+
+        if rest.startswith("-"):
+            # 例如 -1:fmt 或 -2
+            if ":" in rest:
+                days_part, fmt = rest[1:].split(":", 1)
+            else:
+                days_part = rest[1:]
+            minus_days = int(days_part)
+        elif rest.startswith(":"):
+            # 例如 :fmt
+            fmt = rest[1:]
+
+        return get_cob_date_minus_days(scheduled_next_run, minus_days, fmt)
+
+    def replace_match(m):
+        var_expr = m.group(1)
+        return resolve_variable(var_expr)
+
+    return PLACEHOLDER_PATTERN.sub(replace_match, text)
+
+✅ 举例用法
+
+from datetime import datetime
+
+# 假设你已经定义了下面两个方法，不变：
+def get_cob_date(current_date: datetime) -> datetime:
+    weekday = current_date.weekday()
+    if weekday == 6: return current_date.replace(day=current_date.day - 2)
+    if weekday == 0: return current_date.replace(day=current_date.day - 3)
+    return current_date.replace(day=current_date.day - 1)
+
+def get_cob_date_minus_days(current_date: datetime, days: int, fmt: str = "%Y-%m-%d") -> str:
+    prev_cob = get_cob_date(current_date)
+    for _ in range(1, days + 1):
+        prev_cob = get_cob_date(prev_cob)
+    return prev_cob.strftime(fmt)
+
+# 替换示例
+template = "Start: ${CURRENT_COB_DATE}, Prev: ${CURRENT_COB_DATE-2}, CustomFormat: ${CURRENT_COB_DATE-1:%d/%m/%Y}"
+result = replace_cob_variables(template, datetime(2025, 7, 8))
+print(result)
+
+✅ 输出示例（假设你用的是 2025-07-08）
+
+Start: 2025-07-05, Prev: 2025-07-03, CustomFormat: 04/07/2025
+
+✅ 总结
+
+模块	作用
+PLACEHOLDER_PATTERN	找到 ${...} 部分
+resolve_variable	解析变量 ${CURRENT_COB_DATE-2:%Y%m%d}
+get_cob_date, get_cob_date_minus_days	保留逻辑，不动
+replace_cob_variables	主函数，负责替换文本
+
+你如果后面想拓展 ${OTHER_VAR}，可以将 resolve_variable() 抽象成 handler 注册系统；你如果想支持更强表达式，也可以集成 Jinja2 模板。
+
+需要我帮你再封装成模块/类、写单元测试或 CLI 工具，也可以继续说。
+
+
+
+好的！下面是针对你刚刚那份 replace_cob_variables() 的函数逻辑，编写的 完整单元测试代码，其中：
+	•	测试 get_cob_date()：
+	•	从周一到周五各测一遍，确保逻辑正确。
+	•	测试 get_cob_date_minus_days()：
+	•	分别测试 -1 到 -7 的结果，确保能正确地向前迭代工作日。
+	•	测试 replace_cob_variables()：
+	•	验证能否正确替换带变量的模板字符串，验证格式化是否成功。
+
+✅ 单元测试代码（推荐放在 test_replace_variables.py）
+
+import unittest
+from datetime import datetime, timedelta
+
+# --- 以下是你已有的方法（保持不变） ---
+
+def get_cob_date(current_date: datetime) -> datetime:
+    weekday = current_date.weekday()
+    if weekday == 6:  # Sunday
+        return current_date - timedelta(days=2)
+    elif weekday == 0:  # Monday
+        return current_date - timedelta(days=3)
+    else:
+        return current_date - timedelta(days=1)
+
+def get_cob_date_minus_days(current_date: datetime, days: int, fmt: str = "%Y-%m-%d") -> str:
+    prev_cob = get_cob_date(current_date)
+    for _ in range(1, days + 1):
+        prev_cob = get_cob_date(prev_cob)
+    return prev_cob.strftime(fmt)
+
+# --- 待测试方法 ---
+
+import re
+
+VAR_NAME = "CURRENT_COB_DATE"
+DEFAULT_FMT = "%Y-%m-%d"
+PLACEHOLDER_PATTERN = re.compile(r"\$\{([^}]+)\}")
+
+def replace_cob_variables(text: str, scheduled_next_run: datetime) -> str:
+    def resolve_variable(expr: str) -> str:
+        if not expr.startswith(VAR_NAME):
+            raise ValueError(f"Unsupported variable '{expr}'. Only '${{{VAR_NAME}}}' is supported.")
+
+        minus_days = 0
+        fmt = DEFAULT_FMT
+
+        rest = expr[len(VAR_NAME):]
+
+        if rest.startswith("-"):
+            if ":" in rest:
+                days_part, fmt = rest[1:].split(":", 1)
+            else:
+                days_part = rest[1:]
+            minus_days = int(days_part)
+        elif rest.startswith(":"):
+            fmt = rest[1:]
+
+        return get_cob_date_minus_days(scheduled_next_run, minus_days, fmt)
+
+    def replace_match(m):
+        return resolve_variable(m.group(1))
+
+    return PLACEHOLDER_PATTERN.sub(replace_match, text)
+
+
+# --- 单元测试部分 ---
+
+class TestCobDateLogic(unittest.TestCase):
+
+    def test_get_cob_date_mon_to_fri(self):
+        # 周一到周五对应 weekday: 0-4
+        test_dates = {
+            'Monday': datetime(2025, 7, 7),     # Monday
+            'Tuesday': datetime(2025, 7, 8),    # Tuesday
+            'Wednesday': datetime(2025, 7, 9),  # Wednesday
+            'Thursday': datetime(2025, 7,10),   # Thursday
+            'Friday': datetime(2025, 7,11),     # Friday
+        }
+
+        expected_cob = {
+            'Monday': datetime(2025, 7, 4),  # Friday
+            'Tuesday': datetime(2025, 7, 7), # Monday
+            'Wednesday': datetime(2025, 7, 8),
+            'Thursday': datetime(2025, 7, 9),
+            'Friday': datetime(2025, 7,10),
+        }
+
+        for day, date in test_dates.items():
+            with self.subTest(day=day):
+                result = get_cob_date(date)
+                self.assertEqual(result.date(), expected_cob[day].date())
+
+    def test_get_cob_date_minus_days(self):
+        base_date = datetime(2025, 7, 11)  # Friday
+
+        results = [
+            get_cob_date_minus_days(base_date, i)
+            for i in range(1, 8)
+        ]
+
+        self.assertEqual(results[0], "2025-07-10")  # -1
+        self.assertEqual(results[1], "2025-07-09")  # -2
+        self.assertEqual(results[2], "2025-07-08")  # -3
+        self.assertEqual(results[3], "2025-07-07")  # -4
+        self.assertEqual(results[4], "2025-07-04")  # -5
+        self.assertEqual(results[5], "2025-07-03")  # -6
+        self.assertEqual(results[6], "2025-07-02")  # -7
+
+    def test_replace_cob_variables_basic(self):
+        base_date = datetime(2025, 7, 11)  # Friday
+
+        template = "Today: ${CURRENT_COB_DATE}, Prev: ${CURRENT_COB_DATE-2}, Custom: ${CURRENT_COB_DATE-3:%d/%m/%Y}"
+        result = replace_cob_variables(template, base_date)
+
+        self.assertIn("2025-07-10", result)  # -1
+        self.assertIn("2025-07-09", result)  # -2
+        self.assertIn("08/07/2025", result)  # -3, custom format
+
+    def test_replace_with_invalid_variable(self):
+        with self.assertRaises(ValueError):
+            replace_cob_variables("Invalid var: ${SOME_OTHER_VAR}", datetime(2025, 7, 11))
+
+
+if __name__ == '__main__':
+    unittest.main()
+
+✅ 如何运行
+
+将上述代码保存为文件（比如 test_replace_variables.py），然后运行：
+
+python -m unittest test_replace_variables.py
+
+✅ 结构回顾
+
+测试函数名	测试内容
+test_get_cob_date_mon_to_fri	验证 get_cob_date() 每个工作日返回的 COB
+test_get_cob_date_minus_days	从 -1 到 -7 每个结果都验证
+test_replace_cob_variables_basic	验证实际替换是否符合预期
+test_replace_with_invalid_variable	非法变量是否抛异常
+
+如果你有计划使用 pytest 或想用 mock 来测试 get_cob_date 逻辑也可以告诉我，我可以帮你进一步改造成可插拔式结构！
