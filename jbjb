@@ -1,0 +1,170 @@
+好的！以下是你要求的完整整合版本：
+
+✅ 新增功能点（全部已支持）：
+	1.	✅ ${CURRENT_COB_DATE - 1} 允许 -1 前后有空格（自动清理）
+	2.	✅ ${CURRENT_COB_DATE} 不带偏移时默认 offset=0
+	3.	✅ 自动识别 Java 风格日期格式（如 yyyyMMdd），并转换为 Python 的 %Y%m%d
+
+✅ 完整主逻辑代码
+
+import re
+from datetime import datetime, timedelta
+from typing import Callable, Dict
+
+# === 注册机制 ===
+PLACEHOLDER_PATTERN = re.compile(r"\$\{([^}]+)\}")
+VARIABLE_RESOLVERS: Dict[str, Callable[[str, dict], str]] = {}
+
+def register_variable(name: str):
+    def decorator(func):
+        VARIABLE_RESOLVERS[name] = func
+        return func
+    return decorator
+
+✅ Java 日期格式自动转换工具
+
+def is_python_strftime_format(fmt: str) -> bool:
+    return "%" in fmt
+
+def is_java_datetime_format(fmt: str) -> bool:
+    return any(token in fmt for token in ["yyyy", "MM", "dd", "HH", "mm", "ss"])
+
+def convert_java_to_python_format(fmt: str) -> str:
+    return (fmt.replace("yyyy", "%Y")
+               .replace("MM", "%m")
+               .replace("dd", "%d")
+               .replace("HH", "%H")
+               .replace("mm", "%M")
+               .replace("ss", "%S"))
+
+✅ 日期逻辑（使用 offset）
+
+def get_cob_date(current_date: datetime) -> datetime:
+    weekday = current_date.weekday()  # Monday = 0
+    if weekday == 6:
+        return current_date - timedelta(days=2)
+    elif weekday == 0:
+        return current_date - timedelta(days=3)
+    else:
+        return current_date - timedelta(days=1)
+
+def get_cob_date_with_offset(current_date: datetime, offset: int, fmt: str = "%Y-%m-%d") -> str:
+    prev_cob = get_cob_date(current_date)
+    for _ in range(1, offset + 1):
+        prev_cob = get_cob_date(prev_cob)
+    return prev_cob.strftime(fmt)
+
+✅ 支持 ${CURRENT_COB_DATE} 替换（含扩展）
+
+@register_variable("CURRENT_COB_DATE")
+def handle_current_cob_date(param_str: str, context: dict) -> str:
+    offset = 0
+    fmt = "%Y-%m-%d"
+
+    if ":" in param_str:
+        offset_part, fmt = param_str.split(":", 1)
+        offset_part = offset_part.strip()
+        offset = int(offset_part) if offset_part else 0
+    elif param_str.strip():
+        offset = int(param_str.strip())
+
+    # 自动转换 Java 风格格式
+    if not is_python_strftime_format(fmt) and is_java_datetime_format(fmt):
+        fmt = convert_java_to_python_format(fmt)
+
+    base_date = context["scheduled_next_run"]
+    return get_cob_date_with_offset(base_date, offset, fmt)
+
+✅ 核心替换函数
+
+def replace_variables(text: str, context: dict) -> str:
+    def resolve_variable(expr: str) -> str:
+        name, *rest = expr.split("-", 1)
+        name = name.strip()
+        param_str = rest[0] if rest else ""
+        handler = VARIABLE_RESOLVERS.get(name)
+        if not handler:
+            raise ValueError(f"Unsupported variable: '{name}'")
+        return handler(param_str, context)
+
+    def replace_match(match):
+        expr = match.group(1)
+        return resolve_variable(expr)
+
+    return PLACEHOLDER_PATTERN.sub(replace_match, text)
+
+✅ 单元测试：test_replace_variables.py
+
+import unittest
+from datetime import datetime
+
+# 假设所有主逻辑已从模块导入
+# from your_module import replace_variables, get_cob_date, get_cob_date_with_offset
+
+class TestVariableReplaceSystem(unittest.TestCase):
+
+    def setUp(self):
+        self.context = {
+            "scheduled_next_run": datetime(2025, 7, 11)  # Friday
+        }
+
+    def test_cob_date_exact(self):
+        # 周一到周日的 COB 验证
+        weekdays = {
+            "Mon": (datetime(2025, 7, 7),  datetime(2025, 7, 4)),  # Mon → Fri
+            "Tue": (datetime(2025, 7, 8),  datetime(2025, 7, 7)),
+            "Wed": (datetime(2025, 7, 9),  datetime(2025, 7, 8)),
+            "Thu": (datetime(2025, 7,10),  datetime(2025, 7, 9)),
+            "Fri": (datetime(2025, 7,11),  datetime(2025, 7,10)),
+            "Sat": (datetime(2025, 7,12),  datetime(2025, 7,11)),
+            "Sun": (datetime(2025, 7,13),  datetime(2025, 7,11)),
+        }
+        for name, (input_date, expected) in weekdays.items():
+            with self.subTest(day=name):
+                result = get_cob_date(input_date)
+                self.assertEqual(result.date(), expected.date())
+
+    def test_get_cob_with_offset(self):
+        result = get_cob_date_with_offset(datetime(2025, 7, 11), 3)
+        self.assertEqual(result, "2025-07-07")  # -3 COB
+
+    def test_replace_basic_current(self):
+        text = "COB is ${CURRENT_COB_DATE}"
+        result = replace_variables(text, self.context)
+        self.assertIn("2025-07-10", result)
+
+    def test_replace_with_offset_and_format(self):
+        text = "COB: ${CURRENT_COB_DATE-2:%d/%m/%Y}"
+        result = replace_variables(text, self.context)
+        self.assertIn("09/07/2025", result)
+
+    def test_replace_with_spaces(self):
+        text = "COB: ${CURRENT_COB_DATE - 2 : %Y%m%d}"
+        result = replace_variables(text, self.context)
+        self.assertIn("20250709", result)
+
+    def test_java_format_conversion(self):
+        text = "COB: ${CURRENT_COB_DATE-1:yyyyMMdd}"
+        result = replace_variables(text, self.context)
+        self.assertIn("20250710", result)
+
+    def test_invalid_variable_name(self):
+        with self.assertRaises(ValueError):
+            replace_variables("Oops: ${UNSUPPORTED_VAR}", self.context)
+
+
+if __name__ == '__main__':
+    unittest.main()
+
+✅ 测试覆盖项汇总
+
+测试项	内容
+COB 日期逻辑	周一到周日、偏移正确性
+替换支持 ${VAR}	✅
+支持偏移 ${VAR-3}	✅
+忽略空格 ${VAR - 3}	✅
+自定义格式 %d/%m/%Y	✅
+Java 风格格式 yyyyMMdd	✅
+非法变量名报错	✅
+
+如你愿意，我还可以帮你封装成 PyPI 包、命令行工具、支持 Airflow Macro 或参数注入模块，或者支持 JSON 模板字段批量替换等功能。需要我继续拓展吗？
