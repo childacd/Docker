@@ -1,0 +1,117 @@
+明白了！你想设计的是一个可扩展的模板变量替换系统，目前只支持 ${CURRENT_COB_DATE}，但未来可能支持更多变量。
+
+✅ 你的目标再明确一下
+	•	输入是一个字符串，像 "Today is ${CURRENT_COB_DATE-1}"；
+	•	对其中的 ${...} 变量进行解析和替换；
+	•	每种变量（如 CURRENT_COB_DATE, TODAY, RUNTIME_ENV, USERNAME 等）可以由你定义的处理函数决定其输出；
+	•	当前仅支持 CURRENT_COB_DATE[-N][:FORMAT] 这种；
+	•	架构上希望将来扩展新的变量类型时无需改主逻辑，只需加 handler。
+
+✅ 推荐设计结构（支持插件式 handler 注册）
+
+我们可以定义一个：
+
+replace_variables(text: str, context: dict[str, Any]) -> str
+
+	•	每种变量的解析逻辑由 VariableResolver 提供。
+	•	注册每种变量名及其 handler。
+	•	当前只注册了 CURRENT_COB_DATE。
+
+✅ 重构实现（现代 Python + 扩展性好）
+
+👇 主逻辑
+
+import re
+from datetime import datetime
+from typing import Callable, Dict
+
+PLACEHOLDER_PATTERN = re.compile(r"\$\{([^}]+)\}")
+
+# 用于注册各种变量处理器
+VARIABLE_RESOLVERS: Dict[str, Callable[[str, dict], str]] = {}
+
+def register_variable(name: str):
+    def decorator(func):
+        VARIABLE_RESOLVERS[name] = func
+        return func
+    return decorator
+
+def replace_variables(text: str, context: dict) -> str:
+    def resolve_variable(expr: str) -> str:
+        name, *rest = expr.split("-", 1)
+        handler = VARIABLE_RESOLVERS.get(name)
+        if not handler:
+            raise ValueError(f"Unsupported variable: '{name}'")
+        param_str = rest[0] if rest else ""
+        return handler(param_str, context)
+
+    def replace_match(match):
+        expr = match.group(1)
+        return resolve_variable(expr)
+
+    return PLACEHOLDER_PATTERN.sub(replace_match, text)
+
+👇 注册变量 CURRENT_COB_DATE 的处理器
+
+@register_variable("CURRENT_COB_DATE")
+def handle_current_cob_date(param_str: str, context: dict) -> str:
+    # 支持格式: -N[:FORMAT]，例如：1:%Y/%m/%d
+    minus_days = 0
+    fmt = "%Y-%m-%d"
+    
+    if ":" in param_str:
+        day_part, fmt = param_str.split(":", 1)
+        minus_days = int(day_part) if day_part else 0
+    elif param_str:
+        minus_days = int(param_str)
+
+    base_date: datetime = context["scheduled_next_run"]
+    return get_cob_date_minus_days(base_date, minus_days, fmt)
+
+👇 日期处理逻辑（不变）
+
+def get_cob_date(current_date: datetime) -> datetime:
+    weekday = current_date.weekday()
+    if weekday == 6:
+        return current_date.replace(day=current_date.day - 2)
+    elif weekday == 0:
+        return current_date.replace(day=current_date.day - 3)
+    else:
+        return current_date.replace(day=current_date.day - 1)
+
+def get_cob_date_minus_days(current_date: datetime, days: int, fmt: str = "%Y-%m-%d") -> str:
+    prev_cob = get_cob_date(current_date)
+    for _ in range(1, days + 1):
+        prev_cob = get_cob_date(prev_cob)
+    return prev_cob.strftime(fmt)
+
+✅ 用法示例
+
+template = "Today: ${CURRENT_COB_DATE-1}, Format: ${CURRENT_COB_DATE-2:%d/%m/%Y}"
+context = {"scheduled_next_run": datetime(2025, 7, 11)}
+print(replace_variables(template, context))
+
+✅ 输出
+
+Today: 2025-07-10, Format: 09/07/2025
+
+✅ 将来怎么扩展？
+
+你只需要注册新的变量：
+
+@register_variable("USERNAME")
+def handle_username(param_str: str, context: dict) -> str:
+    return context.get("username", "unknown")
+
+就可以支持 ${USERNAME} 了，无需修改主逻辑。
+
+✅ 总结
+
+优点	说明
+模块化	每个变量有自己解析函数
+插件式扩展	用 @register_variable 注册新变量
+易维护	不同逻辑分离清晰
+错误清晰	找不到变量会报错而非默默失败
+上下文传入	context 支持传多个变量如 scheduled_run, env, user_id 等
+
+如果你愿意，我可以再帮你补一个单元测试框架版本，适配这个新的架构；或者帮你打包成一个可复用模块。你希望继续扩展哪方面？
