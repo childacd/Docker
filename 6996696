@@ -1,0 +1,113 @@
+明白了！你希望代码逻辑中不再要求用户手动传入 scheduled_next_run 这种上下文变量，而是直接使用当前时间（datetime.now()）作为基准日期来计算 CURRENT_COB_DATE。
+
+✅ 更新要求总结
+
+需求	状态
+不再需要 context["scheduled_next_run"]	✅ 改为内部使用 datetime.now()
+变量替换支持 ${CURRENT_COB_DATE} / ${CURRENT_COB_DATE - 1 : yyyyMMdd}	✅ 保留
+自动识别 Java / Python 日期格式	✅ 保留
+-1 前后空格支持	✅ 保留
+不带偏移时默认 offset = 0	✅ 保留
+
+✅ 最新完整代码（无 context）
+
+🔧 日期逻辑部分
+
+from datetime import datetime, timedelta
+
+def get_cob_date(current_date: datetime) -> datetime:
+    weekday = current_date.weekday()  # Monday=0
+    if weekday == 6:  # Sunday
+        return current_date - timedelta(days=2)
+    elif weekday == 0:  # Monday
+        return current_date - timedelta(days=3)
+    else:
+        return current_date - timedelta(days=1)
+
+def get_cob_date_with_offset(current_date: datetime, offset: int, fmt: str = "%Y-%m-%d") -> str:
+    prev_cob = get_cob_date(current_date)
+    for _ in range(1, offset + 1):
+        prev_cob = get_cob_date(prev_cob)
+    return prev_cob.strftime(fmt)
+
+🔧 Java 时间格式支持工具
+
+def is_python_strftime_format(fmt: str) -> bool:
+    return "%" in fmt
+
+def is_java_datetime_format(fmt: str) -> bool:
+    return any(token in fmt for token in ["yyyy", "MM", "dd", "HH", "mm", "ss"])
+
+def convert_java_to_python_format(fmt: str) -> str:
+    return (fmt.replace("yyyy", "%Y")
+               .replace("MM", "%m")
+               .replace("dd", "%d")
+               .replace("HH", "%H")
+               .replace("mm", "%M")
+               .replace("ss", "%S"))
+
+🔧 模板替换逻辑 + 注册机制
+
+import re
+from typing import Callable, Dict
+
+PLACEHOLDER_PATTERN = re.compile(r"\$\{([^}]+)\}")
+VARIABLE_RESOLVERS: Dict[str, Callable[[str], str]] = {}
+
+def register_variable(name: str):
+    def decorator(func):
+        VARIABLE_RESOLVERS[name] = func
+        return func
+    return decorator
+
+@register_variable("CURRENT_COB_DATE")
+def handle_current_cob_date(param_str: str) -> str:
+    offset = 0
+    fmt = "%Y-%m-%d"
+
+    if ":" in param_str:
+        offset_part, fmt = param_str.split(":", 1)
+        offset_part = offset_part.strip()
+        offset = int(offset_part) if offset_part else 0
+    elif param_str.strip():
+        offset = int(param_str.strip())
+
+    if not is_python_strftime_format(fmt) and is_java_datetime_format(fmt):
+        fmt = convert_java_to_python_format(fmt)
+
+    base_date = datetime.now()
+    return get_cob_date_with_offset(base_date, offset, fmt)
+
+def replace_variables(text: str) -> str:
+    def resolve_variable(expr: str) -> str:
+        name, *rest = expr.split("-", 1)
+        name = name.strip()
+        param_str = rest[0] if rest else ""
+        handler = VARIABLE_RESOLVERS.get(name)
+        if not handler:
+            raise ValueError(f"Unsupported variable: '{name}'")
+        return handler(param_str)
+
+    def replace_match(match):
+        expr = match.group(1)
+        return resolve_variable(expr)
+
+    return PLACEHOLDER_PATTERN.sub(replace_match, text)
+
+✅ 示例用法
+
+template = (
+    "Today COB: ${CURRENT_COB_DATE}, "
+    "Yesterday COB: ${CURRENT_COB_DATE - 1 : yyyyMMdd}, "
+    "COB-3: ${CURRENT_COB_DATE - 3}"
+)
+
+print(replace_variables(template))
+
+✅ 输出示例（假设今天是 2025-07-11）
+
+Today COB: 2025-07-10, Yesterday COB: 20250709, COB-3: 2025-07-07
+
+✅ 单元测试如何改？
+
+只需要改掉之前的 context = {} 和 context["scheduled_next_run"]，直接验证字符串输出即可。是否也要我把最新的 unittest 版本一并更新给你？
