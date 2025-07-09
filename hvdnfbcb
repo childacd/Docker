@@ -1,0 +1,5 @@
+git filter-repo --commit-callback '
+if commit.author_email == b"old_author@example.com":
+    commit.author_name = b"New Name"
+    commit.author_email = b"new_author@example.com"
+'
