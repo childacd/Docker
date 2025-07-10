@@ -1,0 +1,91 @@
+很好！你要用 GitLab CI/CD 去构建 Docker 镜像，这里我一步步教你如何写 .gitlab-ci.yml，让 GitLab 自动构建镜像并推送到 Docker Registry（比如 GitLab 自带的 Container Registry、Docker Hub、AWS ECR 都支持）。
+
+✅ 基本目标
+
+你希望做的事情是：
+	1.	每次 push 或合并代码，GitLab Runner 会自动：
+	2.	构建 Docker 镜像（docker build）
+	3.	打上 tag（通常包含 latest 和 commit SHA）
+	4.	推送到目标镜像仓库（如 GitLab Container Registry）
+
+✅ GitLab CI 示例 .gitlab-ci.yml
+
+这是最基本的模板（推到 GitLab 自带的容器仓库）：
+
+image: docker:latest
+
+services:
+  - docker:dind  # 需要 Docker-in-Docker 服务
+
+variables:
+  DOCKER_HOST: tcp://docker:2375/
+  DOCKER_DRIVER: overlay2
+  IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+  IMAGE_LATEST: $CI_REGISTRY_IMAGE:latest
+
+before_script:
+  - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
+
+stages:
+  - build
+
+build-image:
+  stage: build
+  script:
+    - docker build -t $IMAGE_TAG .
+    - docker tag $IMAGE_TAG $IMAGE_LATEST
+    - docker push $IMAGE_TAG
+    - docker push $IMAGE_LATEST
+
+✅ 它默认会推送到哪？
+
+GitLab 自带的 Registry 地址是：
+
+$CI_REGISTRY_IMAGE
+
+它相当于：
+
+registry.gitlab.com/<your-namespace>/<your-project>
+
+你可以在 GitLab 项目页面的 Packages & Registries > Container Registry 找到它。
+
+✅ 你需要准备的东西
+
+	1.	项目中必须有 Dockerfile
+	2.	启用 GitLab 的 Container Registry（大部分默认开启）
+	3.	GitLab Runner 配置支持 docker:dind，或者你是用 GitLab SaaS 的共享 Runner（已内置）
+	4.	.gitlab-ci.yml 文件 push 到主分支或 feature 分支
+
+✅ 进阶：指定 tag，或多平台构建
+
+想打版本 tag？可以改成：
+
+variables:
+  IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
+
+✅ 如果你推送到 Docker Hub、ECR 等其他仓库
+
+只需要把 login 和镜像名换成你的目标地址：
+
+before_script:
+  - echo "$DOCKER_HUB_PASSWORD" | docker login -u "$DOCKER_HUB_USERNAME" --password-stdin
+
+# 然后改为
+docker build -t yourname/myimage:$CI_COMMIT_SHORT_SHA .
+docker push yourname/myimage:$CI_COMMIT_SHORT_SHA
+
+✅ 最后，小贴士
+
+	•	如果你看到 “Cannot connect to the Docker daemon” 说明你的 runner 没配置好 Docker-in-Docker
+	•	如果你用了 GitLab 自带的 runner（Shared Runner），上面的配置是完全可用的
+	•	如果你用了自建 GitLab Runner，Runner 的 config.toml 要加：
+
+[[runners]]
+  ...
+  [runners.docker]
+    privileged = true
+
+要不要我根据你当前项目结构和镜像仓库，给你写一份定制的 .gitlab-ci.yml？你可以告诉我这些信息：
+	•	你用哪个 Registry（GitLab、Docker Hub、ECR）
+	•	镜像名想怎么命名（带 tag？带分支？）
+	•	有没有需要传 env 或构建参数给 docker build
