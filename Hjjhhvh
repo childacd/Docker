@@ -1,0 +1,96 @@
+你的代码逻辑已经写得很清晰了！👏 能正确地区分是否是 object not found，再决定是否 retry，整个 retry loop 也写得很规范。
+
+不过我们可以 进一步做一些小优化，提高代码的可读性、可维护性 和 健壮性：
+
+✅ 优化建议（逐条）
+
+1️⃣ in result.stderr 建议统一大小写判断，避免遗漏
+
+当前：
+
+elif "Unable to stat-source" in result.stderr and "Object does not exist" in result.stderr:
+
+如果 stderr 内容是大小写不同的版本，比如 "object DOES NOT exist"，就会漏判。
+
+推荐改成：
+
+stderr = result.stderr.lower()
+if "unable to stat-source" in stderr and "object does not exist" in stderr:
+    return False
+
+也可以写个工具函数：
+
+def is_source_missing(stderr: str) -> bool:
+    msg = stderr.lower()
+    return "unable to stat-source" in msg and "object does not exist" in msg
+
+然后这样调用：
+
+if is_source_missing(result.stderr):
+    return False
+
+2️⃣ retry loop 可抽成独立函数（更清晰复用）
+
+比如把 retry 抽成一个小函数：
+
+def retry_run(self, job_id, job_name, command, retries=2, delay=1) -> bool:
+    for attempt in range(1, retries + 1):
+        time.sleep(delay)
+        logging.info(f'Retry attempt {attempt} for job {job_name} (job_id: {job_id})')
+        result: JobResult = self.run_process(job_id, job_name, command)
+        if result.success:
+            return True
+    logging.info(f"All attempts failed for job {job_name} (job_id: {job_id})")
+    return False
+
+然后你的 job_func() 会更清爽：
+
+def job_func():
+    result: JobResult = self.run_process(job_id, job_name, command)
+    if result.success:
+        return True
+
+    if is_source_missing(result.stderr):
+        return False
+
+    return self.retry_run(job_id, job_name, command)
+
+3️⃣ 日志建议使用 logger 而不是 logging 直接调用（可选）
+
+如果你已经在类里定义了：
+
+self.logger = logging.getLogger(__name__)
+
+那么用：
+
+self.logger.info(...)
+
+会更清晰，并继承你项目的 logging 配置。
+
+✅ 总结优化后结构
+
+你的思路是完全正确的，以下是我推荐的结构：
+
+def is_source_missing(stderr: str) -> bool:
+    msg = stderr.lower()
+    return "unable to stat-source" in msg and "object does not exist" in msg
+
+def retry_run(self, job_id, job_name, command, retries=2, delay=1) -> bool:
+    for attempt in range(1, retries + 1):
+        time.sleep(delay)
+        self.logger.info(f'Retry attempt {attempt} for job {job_name} (job_id: {job_id})')
+        result: JobResult = self.run_process(job_id, job_name, command)
+        if result.success:
+            return True
+    self.logger.info(f"All attempts failed for job {job_name} (job_id: {job_id})")
+    return False
+
+def job_func():
+    result: JobResult = self.run_process(job_id, job_name, command)
+    if result.success:
+        return True
+    if is_source_missing(result.stderr):
+        return False
+    return self.retry_run(job_id, job_name, command)
+
+如果你觉得这个结构不错，我也可以帮你一起补上注释、单测 mock 或 retry 日志结构化输出（例如 JSON log）。你可以告诉我你想继续完善哪个方向 👍
