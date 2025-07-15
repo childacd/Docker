@@ -1,0 +1,80 @@
+非常好！你项目结构清晰，而且已经具备：
+	•	完整的 Dockerfile（位于 docker/Dockerfile.sync）
+	•	Python 源码集中在 src/ 下
+	•	requirements 文件已存在
+	•	还有 shell 脚本 + SQL 文件按需 COPY
+
+✅ 你需要的 .gitlab-ci.yml 模板
+
+下面这个版本为 Python 项目 + Docker 构建 + 推送 GitLab Registry 镜像 的完整 GitLab CI 配置，默认使用 docker/Dockerfile.sync：
+
+stages:
+  - build
+  - release
+
+variables:
+  IMAGE_NAME: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+  DOCKERFILE_PATH: docker/Dockerfile.sync
+  CONTEXT_PATH: .
+
+.default_template:
+  image: docker:20.10.16
+  services:
+    - docker:20.10.16-dind
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
+
+build-image:
+  extends: .default_template
+  stage: build
+  script:
+    - docker build -f $DOCKERFILE_PATH -t $IMAGE_NAME $CONTEXT_PATH
+  only:
+    - branches
+  tags:
+    - docker
+
+push-image:
+  extends: .default_template
+  stage: release
+  script:
+    - docker push $IMAGE_NAME
+  needs:
+    - build-image
+  only:
+    - branches
+  tags:
+    - docker
+
+✅ 要做的准备（只做一次）
+
+在 GitLab 项目设置 → Settings > CI / CD > Variables 中添加以下变量：
+
+变量名	示例值	说明
+CI_REGISTRY_USER	gitlab-ci-token	GitLab 自动注入，无需设置
+CI_REGISTRY_PASSWORD	${CI_JOB_TOKEN}	可直接用这个值，无需自建密码
+CI_REGISTRY_IMAGE	registry.gitlab.com/your-group/your-project	GitLab 自动提供
+
+如果你使用 DockerHub，请告诉我，我会改成 docker login 的方式。
+
+✅ 自动镜像命名效果
+	•	当前分支叫 feature/upload-script，镜像会是：
+
+registry.gitlab.com/xxx/yyy:feature-upload-script
+
+
+
+你也可以加逻辑对 main 或 release/* 的分支打 latest 标签，这个我也可以帮你扩展。
+
+✅ 最佳实践（可选增强）
+
+如果后续你想加入：
+
+功能	支持说明
+自动 run test（pytest）	在 build job 中加入 Python 测试命令即可
+只在 main 分支推镜像	改 only 条件即可
+每次 release 推两个 tag（如 commit sha 和 latest）	可以在 docker tag 中扩展
+
+如果你想部署这个 image 到 Kubernetes，可以让我知道，我还可以帮你生成 kubectl apply 或 helm upgrade 相关的 release job。
+
+是否需要我帮你加上 test 阶段或者 push latest 镜像的逻辑？
