@@ -1,0 +1,75 @@
+✅ 明确！你现在的需求是：
+
+🎯 目标需求
+
+你想要一个 choice 类型的参数（比如叫 TARGET_HOST），它：
+	1.	有两个选项：
+	•	带 -[a:c]- 的版本
+	•	不带中间段的版本
+	2.	选项的前缀和后缀（比如 STACK_NAME_PREFIX, APP_NAME, APP_DEPLOYMENT_ENV, REGION）来源于其他参数
+	3.	用户在界面上修改这些其他参数（比如 APP_NAME）后，TARGET_HOST 的两个选项也会 实时更新
+
+✅ 实现方式：Active Choices Plugin + reactiveChoice
+
+我们可以使用 Jenkins 的 Active Choices Reactive Parameter，来创建你这个 TARGET_HOST 参数，并根据其他参数实时生成两个选项。
+
+🧩 实现代码片段如下
+
+properties([
+  parameters([
+
+    // 基础输入参数
+    string(name: 'STACK_NAME_PREFIX', defaultValue: 'dev', description: '堆栈前缀'),
+    string(name: 'APP_NAME', defaultValue: 'activepivot', description: '应用名'),
+    string(name: 'APP_DEPLOYMENT_ENV', defaultValue: 'stage', description: '部署环境'),
+    string(name: 'REGION', defaultValue: 'us-west-2', description: '区域'),
+
+    // ✅ 联动生成的 TARGET_HOST
+    [$class: 'CascadeChoiceParameter',
+     name: 'TARGET_HOST',
+     description: '选择目标主机格式（带/不带中间段）',
+     choiceType: 'PT_SINGLE_SELECT',
+     referencedParameters: 'STACK_NAME_PREFIX,APP_NAME,APP_DEPLOYMENT_ENV,REGION',
+     script: [
+       $class: 'GroovyScript',
+       sandbox: true,
+       script: """
+         def prefix = STACK_NAME_PREFIX
+         def name = APP_NAME
+         def env = APP_DEPLOYMENT_ENV
+         def region = REGION
+
+         def withPattern = "\${prefix}-\${name}-[a:c]-\${env}.\${region}.aws.apple.com"
+         def withoutPattern = "\${prefix}-\${name}-\${env}.\${region}.aws.apple.com"
+
+         return [withPattern, withoutPattern]
+       """
+     ]
+    ]
+
+  ])
+])
+
+✅ 效果说明
+
+用户输入	TARGET_HOST 的选项自动更新为
+APP_NAME=pricing	dev-pricing-[a:c]-stage.us-west-2.aws.apple.comdev-pricing-stage.us-west-2.aws.apple.com
+APP_NAME=core	dev-core-[a:c]-stage.us-west-2.aws.apple.comdev-core-stage.us-west-2.aws.apple.com
+
+✅ 后续在 Pipeline 中使用
+
+你可以直接在 sh 脚本中使用：
+
+sh """
+cd Ansible && echo "[Target]" > inventory.ini
+echo "${params.TARGET_HOST}" >> inventory.ini
+"""
+
+📌 总结
+
+你只需要：
+	1.	用 CascadeChoiceParameter（或 ReactiveChoiceParameter）来动态生成选项；
+	2.	在 script 中写两个拼接逻辑；
+	3.	用 referencedParameters 绑定依赖的字段，就能实现实时联动更新选项 ✅
+
+是否还想让用户可以自己输入 [x:y] 这种 pattern？那可以再加一个输入框辅助拼接。需要我加上吗？
