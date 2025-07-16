@@ -1,0 +1,67 @@
+完美，那我们就来实现你需要的版本：
+
+✅ 目标：
+
+你希望 TARGET_HOST 是自动生成的，且中间一段（如 -[1-3]、-[a:c] 或空）可以灵活控制。
+
+我们将：
+	•	增加一个参数：TARGET_PATTERN
+	•	在 TARGET_HOST 中动态拼接这段 pattern
+	•	TARGET_PATTERN 可以包含 ${INSTANCE_COUNT_AP_ONLY} 并在脚本中自动替换
+
+✅ Jenkins 参数化配置片段（支持灵活中间段）
+
+properties([
+  parameters([
+    string(name: 'APP_NAME', defaultValue: 'activepivot', description: '应用名'),
+    string(name: 'STACK_NAME_PREFIX', defaultValue: 'dev', description: '堆栈前缀'),
+    string(name: 'APP_DEPLOYMENT_ENV', defaultValue: 'stage', description: '部署环境'),
+    string(name: 'REGION', defaultValue: 'us-west-2', description: 'AWS 区域'),
+    string(name: 'INSTANCE_COUNT_AP_ONLY', defaultValue: '3', description: 'activepivot 实例个数'),
+    string(name: 'TARGET_PATTERN', defaultValue: '-[1-${INSTANCE_COUNT_AP_ONLY}]', description: '中间段 pattern，例如 -[1-3] 或 -[a:c]，可留空'),
+
+    // 动态生成的主机地址
+    [$class: 'DynamicReferenceParameter',
+     name: 'TARGET_HOST',
+     description: '自动生成目标主机地址',
+     choiceType: 'ET_FORMATTED_HTML',
+     referencedParameters: 'APP_NAME,STACK_NAME_PREFIX,APP_DEPLOYMENT_ENV,REGION,INSTANCE_COUNT_AP_ONLY,TARGET_PATTERN',
+     script: [
+       $class: 'GroovyScript',
+       sandbox: true,
+       script: """
+         def pattern = TARGET_PATTERN ?: ''
+         pattern = pattern.replace("\${INSTANCE_COUNT_AP_ONLY}", INSTANCE_COUNT_AP_ONLY)
+
+         def host = "\${STACK_NAME_PREFIX}-\${APP_NAME}\${pattern}-\${APP_DEPLOYMENT_ENV}.\${REGION}.aws.apple.com"
+         return [host]
+       """
+     ]
+    ]
+  ])
+])
+
+✅ 用法说明
+
+参数	示例值	含义
+APP_NAME	activepivot	应用名
+INSTANCE_COUNT_AP_ONLY	3	仅用于变量替换
+TARGET_PATTERN	-[1-${INSTANCE_COUNT_AP_ONLY}]	最终变为 -[1-3]
+TARGET_HOST	自动生成	如 dev-activepivot-[1-3]-stage.us-west-2.aws.apple.com
+
+你还可以手动写成：
+	•	-[a:c] ➜ 会生成 dev-activepivot-[a:c]-stage...
+	•	'' （空）➜ 会生成 dev-activepivot-stage...
+
+✅ 在 Pipeline 中使用
+
+之后直接用：
+
+sh """
+cd Ansible && echo "[Target]" > inventory.ini
+echo "${params.TARGET_HOST}" >> inventory.ini
+"""
+
+如你还希望默认 TARGET_PATTERN 只有在 APP_NAME == activepivot 时才生效，其它情况留空，也可以进一步加判断逻辑。
+
+需要我帮你实现这个“条件默认值”的版本吗？
