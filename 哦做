@@ -1,0 +1,17 @@
+reactiveChoice(
+  name: 'MY_GENERATED_PARAM',
+  choiceType: 'PT_SINGLE_SELECT',
+  referencedParameters: 'BASE_PARAM',
+  description: '根据 BASE_PARAM 联动生成',
+  script: [
+    $class: 'GroovyScript',
+    sandbox: true,
+    script: [
+      class: 'GroovyScript',
+      sandbox: true,
+      script: """
+        return [ BASE_PARAM + '-suffix' ]
+      """
+    ]
+  ]
+)
