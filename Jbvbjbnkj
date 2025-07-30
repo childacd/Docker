@@ -1,0 +1,74 @@
+非常好，既然你在一个测试容器里执行脚本，不怕它修改内容，那你可以通过以下几种方法 对比脚本运行前后的系统变化，包括文件内容、系统用户、挂载点等。
+
+✅ 常用比对手段分类
+
+我们可以从以下几个层面来观察“被改了什么”：
+
+类型	检查命令	用途
+文件内容对比	diff, md5sum, ls -l	对比具体文件内容、大小
+系统用户变化	cat /etc/passwd, getent passwd	看是否有模拟 passwd 文件影响系统用户
+UID 查验	id <user>	检查用户是否存在系统中
+文件是否被新建	ls -lt /tmp/	排序查看哪些新文件被创建
+掛載点变化	cat /etc/auto.*, mount	自动挂载相关检查
+
+✅ 建议操作流程（简单易操作）
+
+📌 Step 1: 记录运行前的快照
+
+# 备份关键系统文件内容
+cp /etc/passwd /tmp/passwd.before
+cp /etc/group /tmp/group.before
+cp /etc/fstab /tmp/fstab.before
+ls -lR /tmp > /tmp/tmpfiles.before
+
+或者更精细的：
+
+md5sum /etc/passwd /etc/group > /tmp/hashes.before
+
+📌 Step 2: 运行脚本
+
+bash /mnt/my_script.sh
+
+（假设你已经挂载并进入容器了）
+
+📌 Step 3: 比对运行后的差异
+
+1. 查看 /tmp 目录新增的文件
+
+ls -lR /tmp > /tmp/tmpfiles.after
+diff /tmp/tmpfiles.before /tmp/tmpfiles.after
+
+2. 检查模拟 passwd 文件是否生成：
+
+cat /tmp/ldap_psswd_no_user.log
+cat /tmp/inactive_user.log
+
+3. 检查是否修改 /etc/passwd（如果你愿意验证）
+
+diff /etc/passwd /tmp/passwd.before
+
+4. 若使用 md5sum：
+
+md5sum /etc/passwd /etc/group > /tmp/hashes.after
+diff /tmp/hashes.before /tmp/hashes.after
+
+✅ bonus：记录所有操作痕迹（极致做法）
+
+你也可以在跑脚本前启用文件变更审计：
+
+inotifywait -m -r /tmp
+
+或者用更强的系统审计（如 auditd），不过对你的测试目的来说前面的方法已经足够了。
+
+✅ 总结推荐命令组合：
+
+cp /etc/passwd /tmp/passwd.before
+cp /etc/group /tmp/group.before
+ls -lR /tmp > /tmp/tmpfiles.before
+
+bash /mnt/my_script.sh
+
+diff /etc/passwd /tmp/passwd.before
+diff /tmp/tmpfiles.before <(ls -lR /tmp)
+
+如果你告诉我你怀疑它改动了哪些文件（比如 /tmp 下面生成的、还是 /etc、还是 mount 相关），我可以帮你更精准地定向比对。需要吗？
