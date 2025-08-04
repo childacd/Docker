@@ -1,0 +1,106 @@
+很好，你已经可以成功连接容器的 SSH 服务了，但是：
+
+	🛑 输完密码后提示 Permission denied
+
+这是一个非常常见的问题，原因集中在几个地方：
+
+✅ 可能原因一览
+
+原因	解释	如何排查
+❌ 密码错误	看似输对了，其实输错了	确保密码是你在 Dockerfile 里设置的
+❌ root 登录被禁用了	sshd_config 中 PermitRootLogin no	检查配置文件
+❌ PasswordAuthentication 被禁用	不能用密码登录	检查配置文件
+❌ shell 不存在或权限不足	用户没有合法的 shell	查看 /etc/passwd
+❌ 用户 home 目录权限问题	~/.ssh 或 ~ 权限不当	检查权限是否为该用户、模式是否 700
+❌ 容器中 PAM / NSS 不完整	最常见于 alpine 系	使用完整的 ubuntu/debian 镜像避免问题
+
+✅ 你可以这样逐步排查：
+
+🔍 1. 确认 sshd_config 允许 root 登录和密码认证
+
+容器内执行：
+
+cat /etc/ssh/sshd_config | grep -Ei 'PermitRootLogin|PasswordAuthentication'
+
+结果应为：
+
+PermitRootLogin yes
+PasswordAuthentication yes
+
+如果不是，就：
+
+sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+然后重启 sshd：
+
+service ssh restart
+# 或者
+pkill sshd && /usr/sbin/sshd
+
+🔍 2. 确认 root 密码正确设置
+
+容器内运行：
+
+grep root /etc/shadow
+
+如果你看到 ! 或 *，说明密码被锁住了。
+
+重新设置密码：
+
+echo "root:root" | chpasswd
+
+再试 SSH 登录。
+
+🔍 3. 检查 /etc/passwd 中 root 的 shell 是合法的
+
+grep root /etc/passwd
+
+你应该看到：
+
+root:x:0:0:root:/root:/bin/bash
+
+如果最后是 /usr/sbin/nologin 或 /bin/false，也会登录失败。用下面命令修复：
+
+usermod -s /bin/bash root
+
+🔍 4. 检查 home 目录和权限（尤其是自建用户）
+
+如果你是用 useradd 添加的用户，确保：
+
+ls -ld /home/myuser
+# 应该是 700 并归属该用户
+
+如果权限是 755 或者 owner 错了，也会触发 ssh 拒绝登录。
+
+✅ 最小可用的 Dockerfile 模板（再核对一遍）
+
+FROM ubuntu:20.04
+
+RUN apt-get update && apt-get install -y openssh-server && mkdir -p /var/run/sshd
+
+RUN echo 'root:root' | chpasswd
+
+RUN sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+RUN ssh-keygen -A
+
+EXPOSE 22
+CMD ["/usr/sbin/sshd", "-D"]
+
+运行命令：
+
+docker build -t ssh-enabled .
+docker run -d -p 2222:22 ssh-enabled
+
+然后连接：
+
+ssh root@localhost -p 2222
+# 密码是 root
+
+如果你能贴一下 sshd_config 里的几行配置，或贴一下 SSH 报错的完整日志（加上 -v 参数），我可以更准确地判断问题所在：
+
+ssh -v root@localhost -p 2222
+
+是否需要我帮你写一个 SSH 登录问题一键排查脚本？
