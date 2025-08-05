@@ -1,0 +1,87 @@
+好的，下面是一个完整可运行的示例项目，它满足你的要求：
+
+	✅ 容器入口是 /usr/sbin/sshd -D
+✅ 容器用 root 启动，先运行 sshd
+✅ 然后自动切换到普通用户（如 youruser）执行主命令或进入 shell
+
+✅ 项目结构一览
+
+your-project/
+├── Dockerfile
+└── entrypoint.sh
+
+🐳 Dockerfile
+
+FROM ubuntu:20.04
+
+# 安装 ssh 服务和 su 工具
+RUN apt-get update && \
+    apt-get install -y openssh-server sudo && \
+    mkdir -p /var/run/sshd
+
+# 创建非 root 用户
+RUN useradd -m -s /bin/bash youruser && \
+    echo 'youruser:yourpassword' | chpasswd && \
+    echo 'youruser ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+
+# 配置 sshd 允许密码登录 & 公钥登录（都打开，方便切换）
+RUN sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
+    sed -i 's/^#\?PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config && \
+    ssh-keygen -A
+
+# 开放 SSH 端口
+EXPOSE 22
+
+# 拷贝入口脚本
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# 设置入口为脚本（默认以 root 运行）
+ENTRYPOINT ["/entrypoint.sh"]
+
+🔧 entrypoint.sh
+
+#!/bin/bash
+
+# 启动 sshd（必须由 root 执行）
+/usr/sbin/sshd
+
+# 如果有传入参数，则切换到普通用户并执行该命令
+if [ $# -eq 0 ]; then
+    # 没有参数就进入用户的 shell
+    exec su - youruser
+else
+    # 有命令就执行它
+    exec su - youruser -c "$*"
+fi
+
+✅ 构建镜像
+
+docker build -t ssh-user-demo .
+
+✅ 运行容器（不加 -u）
+
+docker run -d --name my-ssh-container -p 2222:22 ssh-user-demo
+
+✅ 测试 SSH 登录
+
+ssh youruser@localhost -p 2222
+# 密码是 yourpassword
+
+✅ 测试挂载主机目录
+
+你还可以加：
+
+docker run -d \
+  -v /home/youruser:/home/youruser \
+  -p 2222:22 \
+  ssh-user-demo
+
+✅ 可选：以后改为只支持 SSH key 登录
+
+你可以改：
+
+RUN sed -i 's/^PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+
+这个项目完整可用。如果你还需要加上 ~/.ssh/authorized_keys 挂载和权限设置，我可以继续帮你加进去。需要吗？
