@@ -1,0 +1,71 @@
+👌 非常好，你希望：
+
+	✅ 在 entrypoint.sh 中切换用户时，不要硬编码用户名，比如 su - youruser，而是自动使用当前容器运行时的用户
+
+这是非常合理的需求，尤其当你用 docker run -u <uid>:<gid> 指定用户时，用户名可能不是 youruser、甚至根本没名字（纯 UID）。
+
+✅ 目标：自动获取当前运行用户，并用它做 su 切换
+
+✅ 方法一：用 UID 映射用户名（推荐）
+
+你可以在 entrypoint.sh 中动态获取当前 UID 对应的用户名：
+
+#!/bin/bash
+
+# 启动 sshd（必须是 root）
+/usr/sbin/sshd
+
+# 获取当前 UID 对应的用户名
+TARGET_USER=$(getent passwd "$UID" | cut -d: -f1)
+
+# 如果查不到用户名，fallback 到 /bin/bash（比如 UID 没有 entry）
+if [ -z "$TARGET_USER" ]; then
+    echo "[WARN] UID $UID has no corresponding user, falling back to bash."
+    exec /bin/bash
+fi
+
+# 执行命令或进入 shell
+if [ $# -eq 0 ]; then
+    exec su - "$TARGET_USER"
+else
+    exec su - "$TARGET_USER" -c "$*"
+fi
+
+🧠 解释：
+	•	getent passwd "$UID" 查找当前 UID 对应的 /etc/passwd 条目；
+	•	cut -d: -f1 取用户名字段；
+	•	如果 docker run 没有 -u，默认是 root（UID 0）；
+	•	如果指定 -u 1001，就会用 UID 1001 查找用户名；
+	•	如果找不到用户名，就直接执行 /bin/bash，防止脚本 crash。
+
+✅ 方法二：直接使用 $USER 或 $LOGNAME（不推荐）
+
+这两个变量可能未定义，尤其是通过 -u 启动时环境变量未自动设置。
+
+exec su - "$USER"
+
+⚠️ 这种方式在很多情况下会失败，不建议依赖。
+
+✅ 方法三：使用 id -un 获取当前用户（仅限 UID 有名字时）
+
+TARGET_USER=$(id -un 2>/dev/null || echo "")
+
+问题同样在于：-u 12345 时没有 /etc/passwd 项会失败。
+
+✅ 推荐方式还是使用 getent passwd "$UID" 映射 UID → 用户名
+
+最稳定、安全，适用于你现在的使用场景。
+
+示例完整输出
+
+如果你跑：
+
+docker run -u 12345:12345 your-image
+
+你只要在 Dockerfile 中提前写入这个用户：
+
+RUN useradd -u 12345 -g 12345 -m -s /bin/bash dynamicuser
+
+脚本就能自动识别出用户名 dynamicuser，无需 hardcode。
+
+需要我给你一整份集成好这个脚本 + 构建镜像的 Dockerfile 吗？你可以一条命令测试整个行为。
