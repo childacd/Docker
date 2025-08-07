@@ -1,0 +1,35 @@
+当然可以，以下是你可以在 AWS CLI 中使用的完整命令步骤（假设你已经配置好了 AWS CLI 并拥有操作该实例的权限）：
+
+✅ 1. 先停止实例
+
+aws ec2 stop-instances --instance-ids i-xxxxxxxxxxxxxxxxx
+
+替换 i-xxxxxxxxxxxxxxxxx 为你自己的 EC2 实例 ID。
+
+✅ 2. 等待实例完全停止（可选）
+
+aws ec2 wait instance-stopped --instance-ids i-xxxxxxxxxxxxxxxxx
+
+这一步是为了确保实例已经完全停止，再进行下一步操作，防止报错。
+
+✅ 3. 修改实例类型（例如改成 t3.large）
+
+aws ec2 modify-instance-attribute --instance-id i-xxxxxxxxxxxxxxxxx --instance-type "{\"Value\": \"t3.large\"}"
+
+✅ 4. 启动实例
+
+aws ec2 start-instances --instance-ids i-xxxxxxxxxxxxxxxxx
+
+🔁 一键脚本版（替换实例 ID 和目标类型）
+
+如果你想一次性运行，可以用如下脚本：
+
+INSTANCE_ID="i-xxxxxxxxxxxxxxxxx"
+NEW_TYPE="t3.large"
+
+aws ec2 stop-instances --instance-ids "$INSTANCE_ID"
+aws ec2 wait instance-stopped --instance-ids "$INSTANCE_ID"
+aws ec2 modify-instance-attribute --instance-id "$INSTANCE_ID" --instance-type "{\"Value\": \"$NEW_TYPE\"}"
+aws ec2 start-instances --instance-ids "$INSTANCE_ID"
+
+如你还有 Auto Scaling、Elastic IP、EBS 或其他挂载资源，修改前需要注意兼容性。如需，我可以继续帮你确认影响。需要吗？
