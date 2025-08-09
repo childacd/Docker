@@ -1,0 +1,39 @@
+你可以用 Bash 的 if 语句来判断 region，然后给 S3_BUCKET 赋值，例如：
+
+#!/bin/bash
+
+region="euwest1"  # 这里可以替换成你的实际 region 值
+
+if [ "$region" = "euwest1" ]; then
+    S3_BUCKET="my-bucket-in-euwest1"
+elif [ "$region" = "euwest2" ]; then
+    S3_BUCKET="my-bucket-in-euwest2"
+else
+    echo "Unknown region: $region"
+    exit 1
+fi
+
+echo "S3_BUCKET is set to: $S3_BUCKET"
+
+如果你想写得更紧凑，可以用 case：
+
+#!/bin/bash
+
+region="euwest1"
+
+case "$region" in
+    euwest1)
+        S3_BUCKET="my-bucket-in-euwest1"
+        ;;
+    euwest2)
+        S3_BUCKET="my-bucket-in-euwest2"
+        ;;
+    *)
+        echo "Unknown region: $region"
+        exit 1
+        ;;
+esac
+
+echo "S3_BUCKET is set to: $S3_BUCKET"
+
+你是希望我帮你写成一行 Shell 赋值的形式（适合放在脚本里直接用）吗？这样更简洁。
