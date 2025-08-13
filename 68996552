@@ -1,0 +1,162 @@
+没问题！我按你现有代码结构在 type=='daily' 的分支里加入 dayOfWeek（三字母小写、逗号分隔，例如 mon,tue）的处理；另外给你一份独立的测试文件（不改动你现文件），用来验证注册是否按配置生效。
+
+1) 代码改动（就地修改你截图这段）
+
+把 elif pattern['type'] == 'daily': 这一块替换为下面这个版本（其余地方不动）：
+
+elif pattern['type'] == 'daily':
+    # 约定：dayOfWeek 为三字母小写、逗号分隔，如 "mon,tue,fri"
+    dow = pattern.get('dayOfWeek')
+    if dow:
+        # 映射到 schedule 的完整星期名称
+        _dow_full = {
+            'mon': 'monday', 'tue': 'tuesday', 'wed': 'wednesday',
+            'thu': 'thursday', 'fri': 'friday', 'sat': 'saturday', 'sun': 'sunday'
+        }
+        days = [d.strip() for d in dow.split(',') if d.strip()]
+        # 可选：快速校验（不想要校验可以去掉这 2 行）
+        invalid = [d for d in days if d not in _dow_full]
+        if invalid: raise ValueError(f"invalid dayOfWeek: {invalid} (expect mon..sun)")
+
+        for d in days:
+            getattr(schedule.every(), _dow_full[d]).at(pattern['time']).do(
+                run_process_with_retry
+            ).tag(job_name)
+    else:
+        schedule.every().day.at(pattern['time']).do(
+            run_process_with_retry
+        ).tag(job_name)
+
+	约定：dayOfWeek 只接受 mon,tue,wed,thu,fri,sat,sun（三字母小写），多个用逗号分隔；不传就表示“每天”。
+
+2) 独立测试文件（不影响你的现有代码）
+
+新建一个文件：test_schedule_registration.py（和你的项目在同一虚拟环境里运行即可）。
+默认用 pytest，也支持 python test_schedule_registration.py 直接跑（会退化为简单断言）。
+
+	你只需要把 TARGET_MODULE 和 ADD_JOB_CALLABLE 两个常量改成你项目里负责执行这段注册逻辑的可调用入口（比如 yourpkg.scheduler.add_job）。如果你的注册逻辑就在一个函数里，就填它；如果在类方法里，也可以在 make_caller() 里构造实例后返回一个闭包。
+
+# filename: test_schedule_registration.py
+# pip install pytest schedule
+import importlib
+import schedule
+from datetime import time as dtime
+
+# ======= 配置区：改成你项目的真实入口 =======
+TARGET_MODULE = "your_module_path"       # 例如 "app.scheduler"
+ADD_JOB_CALLABLE = "add_job"             # 例如 "add_job" 或 "Scheduler.add_job"
+# ============================================
+
+def load_target_and_make_caller():
+    """
+    返回一个可调用：caller(job_id, job_name, command, pattern, exceptions)
+    它内部调用你代码里真正注册 schedule 任务的那个入口。
+    """
+    mod = importlib.import_module(TARGET_MODULE)
+
+    # 如果是模块级函数：like app.scheduler.add_job(...)
+    if hasattr(mod, ADD_JOB_CALLABLE):
+        func = getattr(mod, ADD_JOB_CALLABLE)
+        return func
+
+    # 如果是类方法：like app.scheduler.Scheduler.add_job(...)
+    # 你可以按需改成实例化你的类
+    cls_name, meth = ADD_JOB_CALLABLE.split('.', 1)
+    cls = getattr(mod, cls_name)
+    obj = cls()  # 如需依赖注入请在此调整
+    return getattr(obj, meth)
+
+def _fmt_at_time(at):
+    if at is None:
+        return None
+    return f"{at.hour:02d}:{at.minute:02d}"
+
+def snapshot_jobs():
+    snaps = []
+    for j in schedule.jobs:
+        snaps.append({
+            "unit": j.unit,                               # "days"/"weeks"/...
+            "start_day": getattr(j, "start_day", None),   # "monday".. 或 None
+            "at_time": _fmt_at_time(getattr(j, "at_time", None)),
+            "tags": set(j.tags) if j.tags else set(),
+        })
+    return snaps
+
+def dummy_command():
+    # 供 run_process_with_retry 调用时使用的占位函数（若你的实现直接调用 command）
+    pass
+
+def test_daily_everyday_at_time():
+    schedule.clear()
+    caller = load_target_and_make_caller()
+    pattern = {"type": "daily", "time": "09:00"}
+    # 根据你的入口签名调整参数顺序
+    caller(job_id="J1", job_name="daily-0900", command=dummy_command, pattern=pattern, exceptions=None)
+
+    snaps = snapshot_jobs()
+    assert len(snaps) == 1
+    s = snaps[0]
+    assert s["unit"] == "days"
+    assert s["start_day"] is None
+    assert s["at_time"] == "09:00"
+
+def test_daily_with_dayofweek_workdays():
+    schedule.clear()
+    caller = load_target_and_make_caller()
+    pattern = {"type": "daily", "time": "09:00", "dayOfWeek": "mon,tue,wed,thu,fri"}
+    caller(job_id="J2", job_name="workdays-0900", command=dummy_command, pattern=pattern, exceptions=None)
+
+    snaps = snapshot_jobs()
+    assert len(snaps) == 5
+    for s in snaps:
+        assert s["unit"] == "weeks"
+        assert s["at_time"] == "09:00"
+    days = sorted(s["start_day"] for s in snaps)
+    assert days == ["friday", "monday", "thursday", "tuesday", "wednesday"]
+
+def test_daily_with_single_day():
+    schedule.clear()
+    caller = load_target_and_make_caller()
+    pattern = {"type": "daily", "time": "18:30", "dayOfWeek": "tue"}
+    caller(job_id="J3", job_name="tue-1830", command=dummy_command, pattern=pattern, exceptions=None)
+
+    snaps = snapshot_jobs()
+    assert len(snaps) == 1
+    s = snaps[0]
+    assert s["unit"] == "weeks"
+    assert s["start_day"] == "tuesday"
+    assert s["at_time"] == "18:30"
+
+def test_daily_invalid_day_raises():
+    schedule.clear()
+    caller = load_target_and_make_caller()
+    pattern = {"type": "daily", "time": "09:00", "dayOfWeek": "foo"}
+    try:
+        caller(job_id="J4", job_name="invalid", command=dummy_command, pattern=pattern, exceptions=None)
+    except ValueError:
+        return
+    assert False, "expected ValueError for invalid dayOfWeek"
+
+运行方式
+	•	pytest（推荐）：
+
+pytest -q test_schedule_registration.py
+
+
+	•	或者直接：
+
+python -m pytest -q test_schedule_registration.py
+
+
+
+	如果你暂时没有 pytest，也可以简单跑：
+python -c "import test_schedule_registration as t; t.test_daily_everyday_at_time(); t.test_daily_with_dayofweek_workdays(); t.test_daily_with_single_day(); print('ok')"
+
+说明 & 兼容性
+	•	测试里通过 schedule.clear() 隔离各个用例，不会影响你应用运行。
+	•	断言基于 schedule.Job 的公开属性：
+	•	daily → unit == "days", start_day is None
+	•	指定星期 → unit == "weeks", start_day in {'monday'..'sunday'}
+	•	如果你的入口签名或模块路径不同，只要改顶部两行即可。
+
+要不要我再加 2 个用例覆盖 weekly 和 once 分支的现有行为？我可以用相同的“快照”方法把它们也测起来，这样你整条注册链就都有回归测试了。
