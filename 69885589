@@ -1,0 +1,57 @@
+好，那我帮你在刚才的示例里加一个打印当前所有已注册 Job 及它们的下次执行时间的功能，这样你在本地跑的时候就能随时看到调度状态。
+
+下面是完整版本：
+
+import schedule
+import time
+from datetime import datetime
+
+# 定义几个 dummy 任务
+def job_minutes():
+    print(f"[{datetime.now()}] 每 1 分钟执行一次的任务")
+
+def job_hourly():
+    print(f"[{datetime.now()}] 每小时第 30 分执行的任务")
+
+def job_daily():
+    print(f"[{datetime.now()}] 每天 14:30 执行的任务")
+
+def job_weekly():
+    print(f"[{datetime.now()}] 每周一 09:00 执行的任务")
+
+# 注册任务
+schedule.every(1).minutes.do(job_minutes)
+schedule.every().hour.at(":30").do(job_hourly)
+schedule.every().day.at("14:30").do(job_daily)
+schedule.every().monday.at("09:00").do(job_weekly)
+
+# 打印当前所有已注册的 job
+def print_jobs():
+    print("\n=== 当前已注册的任务 ===")
+    for job in schedule.jobs:
+        print(f"- {job} （下次运行: {job.next_run}，间隔: {job.interval} {job.unit}）")
+    print("======================\n")
+
+# 主循环
+if __name__ == "__main__":
+    print("调度器启动...")
+    print_jobs()  # 启动时先打印一次
+
+    counter = 0
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+        counter += 1
+        # 每 10 秒打印一次任务列表
+        if counter % 10 == 0:
+            print_jobs()
+
+功能说明
+	1.	print_jobs() 会遍历 schedule.jobs，打印：
+	•	job 对象的描述（包括调用的函数）
+	•	job.next_run（下次执行时间）
+	•	job.interval + job.unit（任务间隔）
+	2.	每隔 10 秒自动打印一次任务列表，也可以在调试时随时调用 print_jobs()。
+	3.	你可以随时 .tag() 给 job 加标签，然后用 schedule.clear(tag) 来删除对应任务。
+
+如果你愿意，我可以帮你改成动态交互版，在终端输入指令（比如 list、remove tag1）就能实时查看和管理这些 job，这样本地测试更方便。你要做成这种可交互的吗？这样就可以在不改代码的情况下增删查任务。
