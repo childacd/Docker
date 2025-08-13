@@ -1,0 +1,120 @@
+可以！下面给你一段可直接拷贝用的示例代码：当 type == "daily" 时，如果带 day_of_week（可单个或列表，大小写都行），就按星期几注册；否则就按“每天 HH:MM”注册。
+
+import schedule
+import time
+from datetime import datetime
+from typing import Any, Dict, Iterable, List, Union
+
+# 你的业务函数
+def my_job():
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] run my_job")
+
+# ---------- 工具函数 ----------
+_DAY_MAP = {
+    "mon": "monday",
+    "tue": "tuesday",
+    "wed": "wednesday",
+    "thu": "thursday",
+    "fri": "friday",
+    "sat": "saturday",
+    "sun": "sunday",
+}
+def _normalize_days(day_field: Union[str, Iterable[str]]) -> List[str]:
+    """
+    支持：
+      - "Monday" / "mon" / "MON" / "Mon"
+      - ["Monday","Tuesday"] / ["mon","tue"]
+    返回 schedule 可用的全称：["monday","tuesday",...]
+    """
+    if isinstance(day_field, str):
+        items = [day_field]
+    else:
+        items = list(day_field)
+
+    days: List[str] = []
+    for d in items:
+        key = d.strip().lower()
+        key3 = key[:3]   # 取前三个字符进行归一化
+        if key3 not in _DAY_MAP:
+            raise ValueError(f"Invalid day_of_week item: {d}")
+        days.append(_DAY_MAP[key3])
+    return days
+
+def _normalize_time(t: Any) -> str:
+    """
+    支持：
+      - 9 / "9" / "09"  -> "09:00"
+      - "9:5"           -> "09:05"
+      - "09:00"         -> "09:00"
+    """
+    if isinstance(t, int):
+        hh = t
+        mm = 0
+    elif isinstance(t, str):
+        s = t.strip()
+        if ":" in s:
+            hh_s, mm_s = s.split(":", 1)
+            hh = int(hh_s)
+            mm = int(mm_s)
+        else:
+            hh = int(s)
+            mm = 0
+    else:
+        raise ValueError(f"Unsupported time format: {t!r}")
+
+    if not (0 <= hh <= 23 and 0 <= mm <= 59):
+        raise ValueError(f"Invalid time value: {hh}:{mm}")
+    return f"{hh:02d}:{mm:02d}"
+
+# ---------- 注册函数 ----------
+def register_daily_from_request(req: Dict[str, Any], job_fn, *, tag: str = None):
+    """
+    期望的 JSON 结构示例：
+      {"type":"daily","time": "9"}                      -> 每天 09:00
+      {"type":"daily","time": "09:00"}                  -> 每天 09:00
+      {"type":"daily","time": 9, "day_of_week":"Mon"}   -> 每周一 09:00
+      {"type":"daily","time": "9:15","day_of_week":["Mon","Tue"]} -> 每周一/二 09:15
+    """
+    if req.get("type") != "daily":
+        raise ValueError("Only supports type == 'daily' here")
+
+    hhmm = _normalize_time(req["time"])
+    day_field = req.get("day_of_week")
+
+    jobs = []
+    if day_field:
+        days = _normalize_days(day_field)
+        for d in days:
+            j = getattr(schedule.every(), d).at(hhmm).do(job_fn)
+            if tag:
+                j.tag(tag)
+            jobs.append(j)
+    else:
+        j = schedule.every().day.at(hhmm).do(job_fn)
+        if tag:
+            j.tag(tag)
+        jobs.append(j)
+
+    return jobs
+
+# ---------- 演示 ----------
+if __name__ == "__main__":
+    # 示例 1：每天 09:00
+    req1 = {"type": "daily", "time": "9"}
+    register_daily_from_request(req1, my_job, tag="daily-all")
+
+    # 示例 2：每周一/周二 09:15
+    req2 = {"type": "daily", "time": "9:15", "day_of_week": ["Monday", "tue"]}
+    register_daily_from_request(req2, my_job, tag="daily-dow")
+
+    print("Scheduler started. (Press Ctrl+C to exit)")
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+
+说明
+	•	day_of_week 可传 "Mon"、"Monday"、"monday"，或列表 ["Mon","Tue"] 等，都会被归一化成 schedule 认可的 monday/tuesday/...。
+	•	time 可传整点 9、字符串 "9"、"09"、"09:00"、"9:5" 等；都会被整理成 "HH:MM"。
+	•	如果没带 day_of_week 字段，就注册成“每天 HH:MM”执行；如果带了，就按指定星期几注册。
+
+需要我再加上输入字段校验（比如禁止空列表、去重、冲突提示）或返回下一次执行时间的辅助函数吗？我可以一并给你铺好。
