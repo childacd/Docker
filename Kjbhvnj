@@ -1,0 +1,222 @@
+没问题！下面是在你当前 Bash + AWS CLI 脚本基础上做的改版：
+	•	全部注释改为英文
+	•	新增可重复参数 --exclude-name SUBSTR ：在客户端阶段把 Name 标签中包含该子串的实例过滤掉（支持多次传入多个子串）
+	•	其它逻辑保持不变
+
+#!/usr/bin/env bash
+# Filter EC2 instances by multiple tag conditions, preview (InstanceId, Name),
+# optionally exclude instances whose Name contains certain substrings,
+# then (after confirmation) tag all remaining instances.
+# Requirements: bash + AWS CLI (configured). No jq needed.
+
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage:
+  tag_ec2_by_tags.sh -t KEY=VAL [-t KEY=VAL2,...] ... -n NEWKEY=NEWVAL
+                     [-r REGION] [-p PROFILE] [--states s1,s2,...]
+                     [--exclude-name SUBSTR ...] [--dry-run]
+
+Options:
+  -t KEY=VAL          Tag filter; can be specified multiple times. VAL may be a
+                      comma-separated list (OR within same key). Different -t's
+                      are combined with AND.
+  -n KEY=VAL          New tag to add to matched instances (required).
+  -r REGION           AWS region, e.g. us-east-1 (optional).
+  -p PROFILE          AWS CLI profile (optional).
+  --states LIST       Instance states (comma-separated). Default:
+                      pending,running,stopping,stopped
+  --exclude-name S    Exclude instances if their Name tag contains substring S.
+                      Can be repeated to specify multiple substrings (OR).
+  --dry-run           Preview only; do not tag.
+  -h, --help          Show this help.
+
+Examples:
+  tag_ec2_by_tags.sh -t Env=prod -t Role=web -n Reviewed=2025-08-18 -r us-east-1
+  tag_ec2_by_tags.sh -t Env=stage -t Team=Payments -n Owner=DevOps --dry-run
+  tag_ec2_by_tags.sh -t Role=web,api -t Env=stage -n Batch=2025W33 \
+                     --exclude-name canary --exclude-name '-test'
+EOF
+}
+
+# ---------- argument parsing ----------
+TAG_FILTERS=()
+NEW_TAG=""
+REGION=""
+PROFILE=""
+STATES="pending,running,stopping,stopped"
+DRY_RUN=0
+EXCLUDE_NAMES=()   # substrings to exclude by Name
+
+# Preprocess long switches that don't take an immediate value
+args=()
+for a in "$@"; do
+  case "$a" in
+    --help) usage; exit 0 ;;
+    --dry-run) DRY_RUN=1 ;;
+    --states|--exclude-name) args+=("$a") ;; # value follows; handle below
+    -h) usage; exit 0 ;;
+    *) args+=("$a") ;;
+  esac
+done
+set -- "${args[@]}"
+
+while (( "$#" )); do
+  case "$1" in
+    -t)
+      [[ $# -ge 2 ]] || { echo "Missing value for -t"; exit 2; }
+      TAG_FILTERS+=("$2"); shift 2;;
+    -n)
+      [[ $# -ge 2 ]] || { echo "Missing value for -n"; exit 2; }
+      NEW_TAG="$2"; shift 2;;
+    -r)
+      [[ $# -ge 2 ]] || { echo "Missing value for -r"; exit 2; }
+      REGION="$2"; shift 2;;
+    -p)
+      [[ $# -ge 2 ]] || { echo "Missing value for -p"; exit 2; }
+      PROFILE="$2"; shift 2;;
+    --states)
+      [[ $# -ge 2 ]] || { echo "Missing value for --states"; exit 2; }
+      STATES="$2"; shift 2;;
+    --exclude-name)
+      [[ $# -ge 2 ]] || { echo "Missing value for --exclude-name"; exit 2; }
+      EXCLUDE_NAMES+=("$2"); shift 2;;
+    --dry-run)
+      DRY_RUN=1; shift;;
+    -h|--help)
+      usage; exit 0;;
+    *)
+      echo "Unknown argument: $1"; usage; exit 2;;
+  esac
+done
+
+[[ ${#TAG_FILTERS[@]} -gt 0 ]] || { echo "At least one -t filter is required"; exit 2; }
+[[ -n "$NEW_TAG" ]] || { echo "-n NEWKEY=NEWVAL is required"; exit 2; }
+[[ "$NEW_TAG" == *"="* ]] || { echo "-n must be KEY=VALUE"; exit 2; }
+
+NEW_KEY="${NEW_TAG%%=*}"
+NEW_VAL="${NEW_TAG#*=}"
+
+# ---------- build --filters for server-side exact matching ----------
+FILTER_ARGS=( "Name=instance-state-name,Values=${STATES}" )
+for spec in "${TAG_FILTERS[@]}"; do
+  [[ "$spec" == *"="* ]] || { echo "Invalid -t: $spec (need KEY=VALUE)"; exit 2; }
+  key="${spec%%=*}"
+  vals="${spec#*=}"   # allow comma-separated values (OR for same key)
+  FILTER_ARGS+=( "Name=tag:${key},Values=${vals}" )
+done
+
+AWS_ARGS=()
+[[ -n "$REGION"  ]] && AWS_ARGS+=( "--region" "$REGION" )
+[[ -n "$PROFILE" ]] && AWS_ARGS+=( "--profile" "$PROFILE" )
+
+# ---------- query instances (InstanceId, Name) ----------
+# Two columns (tab-separated): InstanceId \t Name
+QUERY="Reservations[].Instances[].[InstanceId, (Tags[?Key=='Name'].Value | [0])]"
+
+set +e
+ROWS="$(aws ec2 describe-instances \
+  --filters "${FILTER_ARGS[@]}" \
+  --query "$QUERY" \
+  --output text \
+  "${AWS_ARGS[@]}")"
+ec=$?
+set -e
+if [[ $ec -ne 0 ]]; then
+  echo "[ERROR] AWS CLI describe-instances failed"; exit $ec
+fi
+
+# Normalize lines into array (strip blank lines)
+if [[ -n "$ROWS" ]]; then
+  mapfile -t LINES < <(printf '%s\n' "$ROWS" | sed '/^[[:space:]]*$/d')
+else
+  LINES=()
+fi
+
+# ---------- client-side exclude by Name substring(s) ----------
+if [[ ${#EXCLUDE_NAMES[@]} -gt 0 && ${#LINES[@]} -gt 0 ]]; then
+  FILTERED=()
+  for line in "${LINES[@]}"; do
+    iid="${line%%$'\t'*}"
+    name="${line#*$'\t'}"
+    [[ "$name" == "$iid" ]] && name=""   # handle cases where Name is absent
+    skip=0
+    for sub in "${EXCLUDE_NAMES[@]}"; do
+      if [[ -n "$sub" && "$name" == *"$sub"* ]]; then
+        skip=1; break
+      fi
+    done
+    (( !skip )) && FILTERED+=( "$line" )
+  done
+  LINES=( "${FILTERED[@]}" )
+fi
+
+COUNT=${#LINES[@]}
+if [[ $COUNT -eq 0 ]]; then
+  echo "No matching instances."
+  exit 0
+fi
+
+# ---------- preview ----------
+echo "Matched ${COUNT} instances:"
+printf '%-20s  %s\n' "InstanceId" "Name"
+printf '%-20s  %s\n' "--------------------" "------------------------------"
+for line in "${LINES[@]}"; do
+  iid="${line%%$'\t'*}"
+  name="${line#*$'\t'}"
+  [[ "$name" == "$iid" ]] && name=""
+  printf '%-20s  %s\n' "$iid" "$name"
+done
+
+# Dry-run mode stops here
+if [[ $DRY_RUN -eq 1 ]]; then
+  echo; echo "--dry-run: preview only, no tags applied."
+  exit 0
+fi
+
+# ---------- confirm & tag ----------
+echo
+echo "Will add tag: ${NEW_KEY}=${NEW_VAL} to the ${COUNT} instances above."
+read -r -p "Type 'yes' to proceed (anything else to cancel): " confirm
+if [[ "${confirm,,}" != "yes" ]]; then
+  echo "Cancelled."
+  exit 0
+fi
+
+# Collect instance IDs
+IDS=()
+for line in "${LINES[@]}"; do
+  IDS+=( "${line%%$'\t'*}" )
+done
+
+# Tag in batches (safe for large sets)
+batch_size=200
+total=${#IDS[@]}
+idx=0
+while [[ $idx -lt $total ]]; do
+  end=$(( idx + batch_size ))
+  (( end > total )) && end=$total
+  batch=( "${IDS[@]:idx:end-idx}" )
+
+  aws ec2 create-tags \
+    --resources "${batch[@]}" \
+    --tags "Key=${NEW_KEY},Value=${NEW_VAL}" \
+    "${AWS_ARGS[@]}"
+
+  idx=$end
+done
+
+echo "Done: applied ${NEW_KEY}=${NEW_VAL} to ${COUNT} instances."
+
+用法小抄（带排除示例）
+
+# 排除 Name 中包含 "canary" 或 "-test" 的实例
+./tag_ec2_by_tags.sh \
+  -t Env=prod -t Role=web \
+  -n Reviewed=2025-08-18 \
+  --exclude-name canary \
+  --exclude-name -test \
+  --dry-run
+
+如果你还想做不区分大小写的排除，我也可以再给你加一个 --exclude-name-ci 选项。
