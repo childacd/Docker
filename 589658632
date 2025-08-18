@@ -1,0 +1,211 @@
+好的！这是一个纯 Bash + AWS CLI 的版本，支持按多个 Tag 过滤 EC2 实例，先打印 InstanceId 和 Name 供你确认，输入 yes 后再统一打上新的 Tag。无需 jq，只用 AWS CLI 的 JMESPath 查询。
+
+	依赖：已安装并配置好 aws CLI；默认不包含 terminated。
+
+#!/usr/bin/env bash
+# 按多个 Tag 过滤 EC2 实例 -> 先预览 (InstanceId, Name) -> 确认后统一打新 Tag
+# 用法示例（见文末）
+
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+用法:
+  tag_ec2_by_tags.sh -t KEY=VAL [-t KEY=VAL2,...] ... -n NEWKEY=NEWVAL
+                     [-r REGION] [-p PROFILE] [--states s1,s2,...] [--dry-run]
+
+参数:
+  -t KEY=VAL         过滤用的 Tag，可多次指定；VAL 可用逗号分隔多个值(表示 OR)
+                     多个 -t 之间为 AND 关系。
+  -n KEY=VAL         要打的新 Tag，格式 KEY=VALUE（必填）
+  -r REGION          AWS 区域，如 us-east-1（可选；默认用环境或 CLI 默认）
+  -p PROFILE         AWS Profile 名称（可选）
+  --states list      实例状态，逗号分隔；默认: pending,running,stopping,stopped
+  --dry-run          只列出匹配实例，不真正打 Tag
+  -h, --help         显示帮助
+
+示例:
+  tag_ec2_by_tags.sh -t Env=prod -t Role=web -n Reviewed=2025-08-18 -r us-east-1 -p myprof
+  tag_ec2_by_tags.sh -t Env=prod -t Name=api- -n Owner=DevOps --dry-run
+  tag_ec2_by_tags.sh -t Role=web,api -t Env=stage -n Batch=2025W33
+EOF
+}
+
+# ------------- 参数解析 -------------
+TAG_FILTERS=()
+NEW_TAG=""
+REGION=""
+PROFILE=""
+STATES="pending,running,stopping,stopped"
+DRY_RUN=0
+
+# 简单支持长参数
+args=()
+for a in "$@"; do
+  case "$a" in
+    --help) usage; exit 0;;
+    --dry-run) DRY_RUN=1;;
+    --states) args+=("$a");;   # 值在下一位
+    -h) usage; exit 0;;
+    *) args+=("$a");;
+  esac
+done
+set -- "${args[@]}"
+
+while (( "$#" )); do
+  case "$1" in
+    -t)
+      [[ $# -ge 2 ]] || { echo "缺少 -t 的值"; exit 2; }
+      TAG_FILTERS+=("$2"); shift 2;;
+    -n)
+      [[ $# -ge 2 ]] || { echo "缺少 -n 的值"; exit 2; }
+      NEW_TAG="$2"; shift 2;;
+    -r)
+      [[ $# -ge 2 ]] || { echo "缺少 -r 的值"; exit 2; }
+      REGION="$2"; shift 2;;
+    -p)
+      [[ $# -ge 2 ]] || { echo "缺少 -p 的值"; exit 2; }
+      PROFILE="$2"; shift 2;;
+    --states)
+      [[ $# -ge 2 ]] || { echo "缺少 --states 的值"; exit 2; }
+      STATES="$2"; shift 2;;
+    --dry-run)
+      DRY_RUN=1; shift;;
+    -h|--help)
+      usage; exit 0;;
+    *)
+      echo "未知参数: $1"; usage; exit 2;;
+  esac
+done
+
+[[ ${#TAG_FILTERS[@]} -gt 0 ]] || { echo "至少需要一个 -t 过滤条件"; exit 2; }
+[[ -n "$NEW_TAG" ]] || { echo "必须提供 -n NEWKEY=NEWVAL"; exit 2; }
+[[ "$NEW_TAG" == *"="* ]] || { echo "-n 需为 KEY=VALUE 形式"; exit 2; }
+
+NEW_KEY="${NEW_TAG%%=*}"
+NEW_VAL="${NEW_TAG#*=}"
+
+# ------------- 构造 --filters 参数 -------------
+FILTER_ARGS=( "Name=instance-state-name,Values=${STATES}" )
+
+for spec in "${TAG_FILTERS[@]}"; do
+  if [[ "$spec" != *"="* ]]; then
+    echo "无效 -t：$spec，需要 KEY=VALUE"
+    exit 2
+  fi
+  key="${spec%%=*}"
+  vals="${spec#*=}"
+  # 支持多个值: KEY=V1,V2（表示 OR）
+  FILTER_ARGS+=( "Name=tag:${key},Values=${vals}" )
+done
+
+AWS_ARGS=()
+[[ -n "$REGION"  ]] && AWS_ARGS+=( "--region" "$REGION" )
+[[ -n "$PROFILE" ]] && AWS_ARGS+=( "--profile" "$PROFILE" )
+
+# ------------- 查询实例 (InstanceId, Name) -------------
+# 输出两列：InstanceId \t Name
+QUERY="Reservations[].Instances[].[InstanceId, (Tags[?Key=='Name'].Value | [0])]"
+
+set +e
+ROWS="$(aws ec2 describe-instances \
+  --filters "${FILTER_ARGS[@]}" \
+  --query "$QUERY" \
+  --output text \
+  "${AWS_ARGS[@]}")"
+ec=$?
+set -e
+if [[ $ec -ne 0 ]]; then
+  echo "[ERROR] aws 调用失败"; exit $ec
+fi
+
+# 去掉空行并计数
+if [[ -n "$ROWS" ]]; then
+  MAPFILE -t LINES < <(printf '%s\n' "$ROWS" | sed '/^[[:space:]]*$/d')
+else
+  LINES=()
+fi
+COUNT=${#LINES[@]}
+
+if [[ $COUNT -eq 0 ]]; then
+  echo "未找到匹配的实例。"
+  exit 0
+fi
+
+echo "找到 ${COUNT} 台实例："
+printf '%-20s  %s\n' "InstanceId" "Name"
+printf '%-20s  %s\n' "--------------------" "------------------------------"
+for line in "${LINES[@]}"; do
+  iid="${line%%$'\t'*}"
+  name="${line#*$'\t'}"
+  [[ "$name" == "$iid" ]] && name=""   # 兼容某些情况下只有一列的 text 输出
+  printf '%-20s  %s\n' "$iid" "$name"
+done
+
+if [[ $DRY_RUN -eq 1 ]]; then
+  echo
+  echo "--dry-run：仅预览，不执行打 Tag。"
+  exit 0
+fi
+
+echo
+echo "将给以上 ${COUNT} 台实例打新 Tag：${NEW_KEY}=${NEW_VAL}"
+read -r -p "确认执行？输入 yes 继续，其它任意键取消： " confirm
+if [[ "${confirm,,}" != "yes" ]]; then
+  echo "已取消。"
+  exit 0
+fi
+
+# ------------- 收集 InstanceId 并批量打 Tag -------------
+IDS=()
+for line in "${LINES[@]}"; do
+  iid="${line%%$'\t'*}"
+  IDS+=( "$iid" )
+done
+
+# 分批（每批 200）
+batch_size=200
+total=${#IDS[@]}
+idx=0
+while [[ $idx -lt $total ]]; do
+  end=$(( idx + batch_size ))
+  (( end > total )) && end=$total
+  batch=( "${IDS[@]:idx:end-idx}" )
+
+  aws ec2 create-tags \
+    --resources "${batch[@]}" \
+    --tags "Key=${NEW_KEY},Value=${NEW_VAL}" \
+    "${AWS_ARGS[@]}"
+
+  idx=$end
+done
+
+echo "已完成打 Tag：${NEW_KEY}=${NEW_VAL}"
+
+快速示例
+
+# 多个 Tag 为 AND；同一键的多个值用逗号（OR）
+./tag_ec2_by_tags.sh \
+  -t Env=prod \
+  -t Role=web,api \
+  -n Reviewed=2025-08-18 \
+  -r us-east-1 \
+  -p my-profile
+
+# 仅预览，不真正打 Tag
+./tag_ec2_by_tags.sh \
+  -t Env=stage -t Team=Payments \
+  -n Owner=DevOps \
+  --dry-run
+
+# 如需包含 terminated
+./tag_ec2_by_tags.sh \
+  -t Name=my-ec2 \
+  -n Flag=old \
+  --states pending,running,stopping,stopped,shutting-down,terminated
+
+说明
+	•	多个 -t 是 且(AND) 关系；同一 -t 里 KEY=V1,V2 是 或(OR) 关系（EC2 过滤语义）。
+	•	可以把 Name 当作普通 Tag 过滤（-t Name=foo）。
+	•	--query 会稳妥输出两列；若个别实例没有 Name，该列为空，不影响打 Tag。
+	•	若你的 Tag 值里包含空格或特殊字符，建议给整个 -n 或 -t 用引号，例如 -n "Deploy Window=Night Batch"。
