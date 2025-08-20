@@ -1,0 +1,55 @@
+就你现在这个主程序来看，如果你只想“最小改动”，不想引入新依赖、不想重构调度器逻辑，那答案是：
+
+👉 方案 B：信号触发（最小、最方便）
+
+只需要加几行代码就能实现，不需要新开 HTTP 端口、也不需要引第三方库：
+
+import signal
+
+def run_minio_folder_sync(dremio_config):
+    metrics = PrometheusMetrics()
+    scheduler = JobScheduler(dremio_config, metrics, fetch_interval)
+
+    # 给 scheduler 加一个立刻执行的方法（假设你已经有 sync_once）
+    def trigger_handler(signum, frame):
+        try:
+            logging.info("Received trigger signal, running once...")
+            scheduler.sync_once()
+        except Exception:
+            logging.exception("Manual trigger failed")
+
+    # 绑定到 SIGUSR1 信号
+    signal.signal(signal.SIGUSR1, trigger_handler)
+
+    try:
+        logging.info(f'Starting prometheus http_server on port {http_port}')
+        start_http_server(http_port)
+    except Exception as e:
+        logging.error('Error starting http_server for prometheus')
+        logging.error(e)
+        sys.exit(1)
+
+    scheduler.start()
+
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        logging.warning('\nShutting down scheduler...')
+        scheduler.stop()
+        scheduler.join()
+
+触发方法：
+
+# 找到进程 PID
+ps aux | grep python
+
+# 发送信号触发立即执行
+kill -USR1 <pid>
+
+这样改动最小：
+	•	只加了一个 signal.signal 和一个 handler。
+	•	不需要开额外 HTTP 服务，不需要新线程。
+	•	Linux/macOS 上直接用 kill -USR1 就能触发。
+
+要不要我帮你把 JobScheduler 里的 sync_once() 示例方法写出来（比如直接调用一次 fetch 逻辑），这样你就可以直接复制粘贴跑？
