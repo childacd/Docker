@@ -1,0 +1,62 @@
+没问题！我把解析函数改为返回三元组 (var_name, offset, date_format)，继续支持空格写法（- 1、 : yyyy-MM），offset 必须是非负整数；解析失败会被 catch 并打出一行 warning 日志，然后回退为 ("CURRENT_COB_DATE", 0, None)。
+
+import re
+import logging
+from typing import Optional, Tuple
+
+logging.basicConfig(level=logging.INFO)
+
+def parse_current_cob_date(expr: str) -> Tuple[str, int, Optional[str]]:
+    """
+    解析形如：
+      CURRENT_COB_DATE
+      CURRENT_COB_DATE-3
+      CURRENT_COB_DATE:yyyyMMdd
+      CURRENT_COB_DATE- 2 : yyyy-MM-dd
+    返回 (var_name, offset, date_format)
+    - var_name: 变量名（本需求中为 'CURRENT_COB_DATE'）
+    - offset: 非负整数，默认 0
+    - date_format: 可为 None；若存在则原样返回（去除首尾空格）
+    解析失败：打印 warning，并返回 ('CURRENT_COB_DATE', 0, None)
+    """
+    try:
+        pattern = re.compile(
+            r"""^(?P<var>[A-Z_][A-Z0-9_]*)   # 变量名（全大写+下划线）
+                 (?:-\s*(?P<off>\d+))?       # 可选 -offset，允许空格
+                 (?:\s*:\s*(?P<fmt>.+))?     # 可选 :DateFormat，允许空格
+                 $""",
+            re.VERBOSE
+        )
+        m = pattern.match(expr.strip())
+        if not m:
+            raise ValueError("Expression does not match expected pattern")
+
+        var = m.group("var")
+        off_str = m.group("off")
+        fmt = m.group("fmt")
+
+        offset = int(off_str) if off_str is not None else 0
+        fmt = (fmt.strip() or None) if fmt is not None else None
+
+        return var, offset, fmt
+
+    except Exception as e:
+        logging.warning(f"Failed to parse expression {expr!r}: {e}")
+        # 回退默认值（按你的需求可改）
+        return "CURRENT_COB_DATE", 0, None
+
+
+# ----------------- 使用示例 -----------------
+# print(parse_current_cob_date("CURRENT_COB_DATE"))                # -> ('CURRENT_COB_DATE', 0, None)
+# print(parse_current_cob_date("CURRENT_COB_DATE-1"))              # -> ('CURRENT_COB_DATE', 1, None)
+# print(parse_current_cob_date("CURRENT_COB_DATE- 2"))             # -> ('CURRENT_COB_DATE', 2, None)
+# print(parse_current_cob_date("CURRENT_COB_DATE: yyyyMMdd"))      # -> ('CURRENT_COB_DATE', 0, 'yyyyMMdd')
+# print(parse_current_cob_date("CURRENT_COB_DATE-3: yyyy-MM-dd"))  # -> ('CURRENT_COB_DATE', 3, 'yyyy-MM-dd')
+# print(parse_current_cob_date("invalid-string"))                  # -> ('CURRENT_COB_DATE', 0, None) 并打印 warning
+
+如果你只想允许变量名必须是 CURRENT_COB_DATE，可以在成功解析后加一行校验：
+
+if var != "CURRENT_COB_DATE":
+    raise ValueError(f"Unexpected variable name: {var}")
+
+这样遇到其它变量名也会走到 except，打印日志并回退默认值。
