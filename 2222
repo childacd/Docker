@@ -1,0 +1,50 @@
+👌 那我给你改一下正则，支持 CURRENT_COB_DATE-1 和 CURRENT_COB_DATE- 1（中间允许空格）。
+同时 :DateFormat 部分前后也允许空格。
+
+代码如下：
+
+import re
+import logging
+from typing import Optional, Tuple
+
+logging.basicConfig(level=logging.INFO)
+
+def parse_current_cob_date(expr: str) -> Tuple[int, Optional[str]]:
+    try:
+        pattern = re.compile(
+            r"""^CURRENT_COB_DATE          # 固定前缀
+                 (?:-\s*(\d+))?            # 可选的 -offset，允许空格
+                 (?:\s*:\s*(.+))?          # 可选的 :DateFormat，允许空格
+                 $""",
+            re.VERBOSE,
+        )
+        m = pattern.match(expr.strip())
+        if not m:
+            raise ValueError("Expression does not match expected pattern")
+        
+        offset_str, fmt = m.groups()
+        offset = int(offset_str) if offset_str is not None else 0
+        return offset, fmt.strip() if fmt else None
+
+    except Exception as e:
+        logging.warning(f"Failed to parse expression {expr!r}: {e}")
+        return 0, None
+
+
+# ----------------- 使用示例 -----------------
+print(parse_current_cob_date("CURRENT_COB_DATE"))                # -> (0, None)
+print(parse_current_cob_date("CURRENT_COB_DATE-1"))              # -> (1, None)
+print(parse_current_cob_date("CURRENT_COB_DATE- 2"))             # -> (2, None)   ✅ 空格也能识别
+print(parse_current_cob_date("CURRENT_COB_DATE: yyyyMMdd"))      # -> (0, 'yyyyMMdd')
+print(parse_current_cob_date("CURRENT_COB_DATE-3: yyyy-MM-dd"))  # -> (3, 'yyyy-MM-dd')
+print(parse_current_cob_date("invalid-string"))                  # -> (0, None)，并打印日志
+
+这样写以后：
+	•	CURRENT_COB_DATE-1 ✅
+	•	CURRENT_COB_DATE- 1 ✅
+	•	CURRENT_COB_DATE:yyyyMMdd ✅
+	•	CURRENT_COB_DATE : yyyyMMdd ✅
+
+都能解析成功。
+
+要不要我再帮你加一个 offset 必须是数字，否则就报错并打 warning（比如 CURRENT_COB_DATE-abc 这种情况）？
