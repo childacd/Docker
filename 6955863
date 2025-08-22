@@ -1,0 +1,34 @@
+你这个路径里写的是类似：
+
+.../stage/trade_store/*/20250730
+.../stage/reference_data/snapshot/*/2025-07-30
+
+⚠️ mc cp 本身不支持直接用 * 这样的通配符在路径中间（不像 aws s3 cp 那样能用 --include/--exclude 搭配 --recursive 去过滤）。
+在 mc 里，* 的通配只会在 本地 shell 展开，但前提是这个目录和文件要在本地文件系统上存在。放到 MinIO/S3 这种远端 bucket 里，shell 是无法展开的。
+
+能怎么做？
+
+有几种替代办法：
+	1.	用 mc find 搭配 mc cp
+例如：
+
+mc find myminio/stage/trade_store --regex '.*20250730$' --exec "mc cp {} myminio/backup/"
+
+这样能找到所有以 20250730 结尾的对象再拷贝。
+
+	2.	用 mc ls + grep + xargs
+
+mc ls --recursive myminio/stage/trade_store | grep 20250730 | awk '{print $5}' | xargs -I {} mc cp myminio/stage/trade_store/{} myminio/backup/
+
+
+	3.	如果只是某一层目录
+MinIO/S3 的路径只是前缀，你也可以直接写：
+
+mc cp --recursive myminio/stage/trade_store/20250730/ myminio/backup/
+
+但这要求你知道具体的层级（不能靠 * 去中间匹配）。
+
+✅ 总结：
+mc cp 不能像你写的那样 /*/20250730 去 copy，需要配合 mc find 或者 mc ls 做过滤。
+
+要不要我帮你写一个 通用脚本，比如输入一个日期（0730），它就自动去所有目录找结尾是这个日期的对象，然后批量 copy？
