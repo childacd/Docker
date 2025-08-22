@@ -1,0 +1,186 @@
+我给你两套优雅方案，二选一都行：
+
+方案 A：两阶段解析 + 每个 Handler 自己解析「尾巴」
+
+思路：先只解析变量名，找到对应的 handler，把变量名后面的尾巴（比如 -3:yyyyMMdd）原样传给它。每个 handler 按自己需要解析。
+
+import re
+import logging
+from typing import Callable, Dict, Any, Tuple, Optional
+
+logging.basicConfig(level=logging.INFO)
+
+# ---------- 阶段1：只解析变量名 ----------
+_HEAD_RE = re.compile(r"^(?P<var>[A-Z_][A-Z0-9_]*)(?P<tail>.*)$")
+
+def parse_head(expr: str) -> Tuple[str, str]:
+    m = _HEAD_RE.match(expr.strip())
+    if not m:
+        raise ValueError(f"Bad variable expression: {expr!r}")
+    return m.group("var"), m.group("tail")
+
+# ---------- Handler 注册 ----------
+HANDLERS: Dict[str, Callable[..., Any]] = {}
+
+def register(name: str):
+    def deco(func: Callable[..., Any]):
+        HANDLERS[name] = func
+        return func
+    return deco
+
+# ---------- 通用调度 ----------
+def dispatch(expr: str) -> Any:
+    try:
+        var, tail = parse_head(expr)
+    except Exception as e:
+        logging.warning(f"Failed to parse head for {expr!r}: {e}")
+        return None
+
+    handler = HANDLERS.get(var)
+    if not handler:
+        logging.warning(f"No handler for variable {var!r}")
+        return None
+
+    # 每个 handler 自己决定如何解析 tail
+    try:
+        return handler(tail=tail)
+    except Exception as e:
+        logging.warning(f"Handler {var} failed for {expr!r}: {e}")
+        return None
+
+# ---------- 示例：CURRENT_COB_DATE 的 Handler（自己解析 offset/format） ----------
+@register("CURRENT_COB_DATE")
+def handle_current_cob_date(*, tail: str) -> str:
+    # 解析 "-offset" 和 ":format"（允许空格）
+    m = re.match(
+        r"""^\s*
+            (?:-\s*(?P<off>\d+))?      # 可选 -offset
+            (?:\s*:\s*(?P<fmt>.+))?    # 可选 :format
+            \s*$""",
+        tail,
+        re.VERBOSE,
+    )
+    if not m:
+        # 没有尾巴也算合法（即只写变量名）
+        off, fmt = 0, None
+    else:
+        off = int(m.group("off")) if m.group("off") is not None else 0
+        fmt = m.group("fmt").strip() if m.group("fmt") else None
+
+    # 在这里做你的业务逻辑；示例仅返回说明字符串
+    return f"[CURRENT_COB_DATE] offset={off}, format={fmt}"
+
+# ---------- 示例：其他变量（没有 offset/format 的需求） ----------
+@register("CURRENT_ENV")
+def handle_current_env(*, tail: str) -> str:
+    # 忽略 tail，直接处理
+    return "[CURRENT_ENV] prod"
+
+# ---------- 使用示例 ----------
+# print(dispatch("CURRENT_COB_DATE- 3 : yyyyMMdd"))
+# print(dispatch("CURRENT_COB_DATE"))
+# print(dispatch("CURRENT_ENV"))
+# print(dispatch("UNKNOWN_VAR-1:xxx"))
+
+优点：
+	•	解耦：各 handler 自己定义自己的语法与参数；以后加新变量名不影响全局解析器。
+	•	简单直观：先找「谁处理」，再由「谁」解读自己的尾巴。
+
+方案 B：中央解析（返回 kwargs）+ “自动裁剪”只把 handler 接受的参数传进去
+
+思路：中央统一把一个表达式解析成 (var, **kwargs)；但不同 handler 参数不一样，用 inspect.signature 自动过滤只传它需要的字段（优雅、可扩展）。
+
+import re
+import logging
+import inspect
+from typing import Callable, Dict, Any, Tuple, Optional
+
+logging.basicConfig(level=logging.INFO)
+
+HANDLERS: Dict[str, Callable[..., Any]] = {}
+
+def register(name: str):
+    def deco(func: Callable[..., Any]):
+        HANDLERS[name] = func
+        return func
+    return deco
+
+# ---------- 中央解析器：把 expr 解析成 var + kwargs ----------
+_HEAD_TAIL_RE = re.compile(r"^(?P<var>[A-Z_][A-Z0-9_]*)(?P<tail>.*)$")
+_COB_TAIL_RE  = re.compile(
+    r"""^\s*
+        (?:-\s*(?P<offset>\d+))?      # 可选 offset
+        (?:\s*:\s*(?P<date_format>.+))?  # 可选 date_format
+        \s*$""",
+    re.VERBOSE,
+)
+
+def central_parse(expr: str) -> Tuple[str, Dict[str, Any]]:
+    m = _HEAD_TAIL_RE.match(expr.strip())
+    if not m:
+        raise ValueError(f"Bad variable expression: {expr!r}")
+    var, tail = m.group("var"), m.group("tail")
+
+    # 根据 var 选择不同的尾巴语法（如需）
+    if var == "CURRENT_COB_DATE":
+        mm = _COB_TAIL_RE.match(tail)
+        if not mm:
+            # 仅变量名也合法
+            return var, {"offset": 0, "date_format": None}
+        offset = int(mm.group("offset")) if mm.group("offset") else 0
+        date_format = mm.group("date_format").strip() if mm.group("date_format") else None
+        return var, {"offset": offset, "date_format": date_format}
+
+    # 其他变量默认不解析尾巴
+    return var, {}
+
+# ---------- 只把 handler 需要的参数传进去 ----------
+def call_with_accepted_kwargs(func: Callable[..., Any], **data):
+    sig = inspect.signature(func)
+    accepted = {k: v for k, v in data.items() if k in sig.parameters}
+    return func(**accepted)
+
+# ---------- 调度 ----------
+def dispatch(expr: str) -> Any:
+    try:
+        var, kwargs = central_parse(expr)
+    except Exception as e:
+        logging.warning(f"Parse failed for {expr!r}: {e}")
+        return None
+
+    handler = HANDLERS.get(var)
+    if not handler:
+        logging.warning(f"No handler for {var!r}")
+        return None
+
+    try:
+        # 只传入 handler 需要的字段（多余的自动丢弃）
+        return call_with_accepted_kwargs(handler, **kwargs)
+    except Exception as e:
+        logging.warning(f"Handler {var} failed for {expr!r}: {e}")
+        return None
+
+# ---------- Handlers ----------
+@register("CURRENT_COB_DATE")
+def handle_current_cob_date(*, offset: int = 0, date_format: Optional[str] = None):
+    return f"[CURRENT_COB_DATE] offset={offset}, format={date_format}"
+
+@register("CURRENT_ENV")
+def handle_current_env():
+    return "[CURRENT_ENV] prod"
+
+# ---------- 使用示例 ----------
+# print(dispatch("CURRENT_COB_DATE-2:yyyy-MM-dd"))
+# print(dispatch("CURRENT_COB_DATE"))
+# print(dispatch("CURRENT_ENV"))
+# print(dispatch("UNKNOWN_VAR"))
+
+优点：
+	•	优雅的“可变参数”：你在中央解析器里统一产出一堆 kwargs（比如 offset、date_format、tz、locale 等），而每个 handler 只会收到自己签名里声明的那几个，其余自动丢弃，调用端代码始终是 handler(**kwargs) 的统一姿势。
+	•	新增变量时，只需在 central_parse 里补一小段语法 + 在 HANDLERS 注册对应函数，handler 只关心自己要的参数。
+
+如何选？
+	•	如果你预期不同变量的语法差别很大、想让每个 handler 自己完全掌控解析规则：用方案 A（两阶段解析）。
+	•	如果你偏好统一入口、并希望在调用侧始终保持一个简洁的 handler(**kwargs)：用方案 B（中央解析 + 自动裁剪参数）。
+
+两个方案都符合你“CURRENT_COB_DATE 接受 offset/format，其他变量不一定有这些”的需求；日志与错误回退也都内置好了。需要我把这套封装成一个小模块并加上几条单元测试样例吗？
