@@ -1,0 +1,36 @@
+看你截图里的内容，每一行前面都有一段固定的 JSON 片段，比如：
+
+"date":"2025-09-07T21:36:27.853937Z","time":"2025-09-07T21:36:27.853937Z","p":"F","log":
+
+如果你想把每一行这一整段去掉，只留下最后的日志内容，可以用正则替换。
+
+方法一：Perl（推荐，能处理复杂 JSON 片段）
+
+find /path/to/folder -type f -name "*.log" -print0 \
+| xargs -0 perl -pi.bak -pe 's/^"date":.*?"log"://'
+
+解释：
+	•	^"date":.*?"log":
+匹配从行首开始到 "log": 之间的所有内容。
+	•	// 替换为空，即删除掉。
+	•	-pi.bak 会原地修改并保留 .bak 备份。
+
+方法二：sed（GNU sed）
+
+find /path/to/folder -type f -name "*.log" -exec sed -i.bak 's/^"date".*\"log\"://' {} +
+
+macOS 用法略不同：
+
+find /path/to/folder -type f -name "*.log" -exec sed -i '' -e 's/^"date".*\"log\"://' {} +
+
+先测试（不修改文件）
+
+grep -o '^"date".*\"log\":' /path/to/folder/some.log | head -n 5
+
+看看会匹配掉哪些东西。
+
+或者只打印替换后的结果：
+
+sed 's/^"date".*\"log\"://' /path/to/folder/some.log | head -n 5
+
+要不要我帮你写成一个 clean_logs.sh 脚本，你直接传入目录路径就能一键处理所有 log 文件？
