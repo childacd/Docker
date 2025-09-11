@@ -1,0 +1,6 @@
+echo "=== systemd services ===" \
+&& systemctl list-units --type=service | grep -i grafana \
+&& echo -e "\n=== running processes ===" \
+&& ps -ef | grep -i grafana | grep -v grep \
+&& echo -e "\n=== docker/podman containers ===" \
+&& (docker ps 2>/dev/null || podman ps 2>/dev/null) | grep -i grafana
