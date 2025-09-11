@@ -1,0 +1,42 @@
+懂了 ✅ 你的场景就是 在 Ansible 的 Jinja2 template (.j2/.tpl) 文件里做条件判断。
+
+在模板里你可以用 Jinja2 的 {% if %} / {% else %} 語法。
+
+示例
+
+假设你传进来的变量叫 user_cost_text_file，你的 share 脚本模板 (.tpl) 可以这么写：
+
+#!/bin/bash
+
+echo "start share script ..."
+
+{% if user_cost_text_file == "aggregation" %}
+# only add these two lines if user_cost_text_file == aggregation
+share --enable-aggregation
+share --config /etc/share/aggregation.conf
+{% endif %}
+
+echo "done."
+
+解释
+	•	user_cost_text_file → 来自你 playbook 里的 vars 或 inventory。
+	•	当它等于 "aggregation" 时，就会渲染出两句 share 命令。
+	•	否则，这两句完全不会出现在最终生成的脚本里。
+
+如果你还想处理“非 aggregation 的情况”
+
+你可以加个 else：
+
+{% if user_cost_text_file == "aggregation" %}
+share --enable-aggregation
+share --config /etc/share/aggregation.conf
+{% else %}
+echo "Skipping aggregation config, user_cost_text_file = {{ user_cost_text_file }}"
+{% endif %}
+
+✅ 总结
+在 .tpl 文件里用 Jinja2 模板语法就行：
+	•	{{ var }} → 打印变量
+	•	{% if ... %} ... {% endif %} → 控制逻辑
+
+要不要我帮你写一个 playbook 例子，展示你在 template: 模块调用时传 user_cost_text_file 变量进去？
