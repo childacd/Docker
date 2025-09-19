@@ -1,0 +1,28 @@
+不会的 👍。
+
+在 Python 代码里用 os.environ[...] = ... 设置环境变量，只会影响当前这个 Python 进程（以及它启动的子进程，比如 subprocess.Popen）。
+
+一旦脚本结束，这些修改就会随进程一起消失，不会写回系统环境，也不会影响其他应用。
+
+举个例子：
+
+import os
+
+os.environ["http_proxy"] = "http://test-proxy:8080"
+print("In Python:", os.environ.get("http_proxy"))
+
+运行时你会看到：
+
+In Python: http://test-proxy:8080
+
+但是等脚本退出后，在终端里执行：
+
+echo $http_proxy
+
+还是原来的值（或者为空）。
+
+✅ 结论：
+	•	在代码里设置/修改 os.environ → 只影响当前 Python 进程 & 子进程。
+	•	不会永久修改机器上的环境变量，也不会影响其他同时运行的应用。
+
+要不要我给你写一个小工具函数，比如 set_proxies_temporarily(proxies)，你在脚本里调用一下，它会自动配置代理环境，等脚本退出就恢复？
