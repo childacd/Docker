@@ -1,0 +1,96 @@
+啊～我明白你意思了 👍
+
+你是说：
+
+	在 Org 文件里有一段 #+begin_src sh（或 bash） 的代码块，
+想用 pandoc 转成 HTML 时，让那段 shell 脚本正确显示（高亮、格式化），
+而不是变成普通文字或错乱。
+
+我们来具体说下该怎么写👇
+
+🧩 一、Org 文件写法（推荐）
+
+最标准的写法如下：
+
+* 示例：Shell 脚本展示
+
+下面是一段 shell 脚本：
+
+#+begin_src bash
+#!/bin/bash
+echo "Hello, world!"
+ls -l /tmp
+#+end_src
+
+或者写成：
+
+#+BEGIN_SRC sh
+echo "run something"
+#+END_SRC
+
+两种写法大小写都可以。
+
+🧠 二、Pandoc 正确转 HTML 的命令
+
+pandoc -f org -t html -s -o output.html input.org --highlight-style=pygments
+
+解释：
+	•	-f org：输入格式是 org
+	•	-t html：输出格式是 html
+	•	-s：生成完整页面（带 HTML 头）
+	•	--highlight-style=pygments：让代码块高亮显示
+
+你也可以换不同高亮样式，比如：
+
+--highlight-style=monochrome
+--highlight-style=tango
+--highlight-style=kate
+
+🧩 三、输出 HTML 的效果
+
+输出的 HTML 中，这段 shell 代码会变成：
+
+<pre class="sourceCode bash"><code class="sourceCode bash">
+#!/bin/bash
+echo "Hello, world!"
+ls -l /tmp
+</code></pre>
+
+并自动附带语法高亮样式。
+
+🧩 四、如果你发现没有高亮
+
+有时 pandoc 没有附带 CSS，可以用：
+
+pandoc -f org -t html -s -o output.html --highlight-style=pygments --standalone --embed-resources
+
+或者生成带内联 CSS 的版本：
+
+pandoc -f org -t html -s --highlight-style=pygments -o output.html input.org
+
+🧩 五、如果你想让脚本在导出时执行（即运行代码）
+
+如果你不是仅展示，而是想 在导出前执行 shell 代码，那就不是 pandoc 的功能，而是 Org 的 Babel 机制。
+
+用 Emacs 导出时：
+
+(org-babel-execute-src-block)
+
+或在 Org 文件头部加上：
+
+#+PROPERTY: header-args:sh :results output :exports both
+
+这样执行代码后，输出结果也会导出到 HTML。
+但 Pandoc 不会执行代码块，它只负责格式化输出。
+
+✅ 总结一下
+
+目标	方法
+只想让 shell 脚本“正确显示”	用 #+begin_src bash ... #+end_src
+想要语法高亮	pandoc --highlight-style=pygments
+想执行脚本并导出结果	用 Emacs Org Babel 导出，不是 Pandoc
+想内嵌 CSS	加 --standalone --embed-resources
+
+你可以发我你 Org 文件里那段 shell 代码块（或它的一小段），
+我帮你看一下是否写得符合 pandoc 的语法高亮规则？
+有时 #+begin_example / #+begin_src 混用也会影响渲染。
