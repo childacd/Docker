@@ -1,0 +1,1 @@
+podman unshare python3 -c 'import os; f="/local/1/testfile"; open(f,"w").close(); os.setxattr(f, b"user.test", b"ok"); print("✅ supported")'
