@@ -1,0 +1,45 @@
+当然可以 ✅
+你这个 Ansible 任务是往 GraphQL 插入一个 tenant 记录。
+我们把它转成等价的 curl 命令（单条即可执行），如下：
+
+✅ 对应的 curl 命令
+
+curl -X POST "http://localhost:4300/graphql" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "mutation { insert_tenant(objects: {name: \"default\", slug: \"default\"}) { returning { id } } }"}'
+
+🧩 命令说明
+
+参数	含义
+-X POST	GraphQL 的请求方法固定为 POST
+http://localhost:4300/graphql	GraphQL endpoint（与你的 Ansible 配置一致）
+-H "Content-Type: application/json"	告诉服务器请求体是 JSON 格式
+-d '{...}'	GraphQL mutation 请求体，注意内层引号已正确转义
+
+🧠 返回结果示例
+
+执行后如果成功，会返回类似：
+
+{
+  "data": {
+    "insert_tenant": {
+      "returning": [
+        {
+          "id": "uuid-xxxxxx"
+        }
+      ]
+    }
+  }
+}
+
+⚠️ 注意安全
+	•	这是 有写操作的命令（mutation），会真的往数据库插入记录；
+	•	建议你 先确认服务可用（例如 curl http://localhost:4300/graphql 返回 200），
+	•	然后再执行此命令；
+	•	如果想测试 GraphQL 是否正常但不插入数据，可以改用 query，例如：
+
+curl -X POST "http://localhost:4300/graphql" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "{ __typename }"}'
+
+是否希望我再帮你补一个带变量参数版本（可以自定义 name/slug，比如 ${TENANT_NAME}）？
