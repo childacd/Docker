@@ -1,0 +1,7 @@
+response=$(curl -s -X POST "$APOLLO_URL" \
+  -H "Content-Type: application/json" \
+  -d "{\"query\": \"query { tenant(where: {name: {_eq: \\\"$DEFAULT_TENANT\\\"}, slug: {_eq: \\\"$DEFAULT_TENANT\\\"}}) { name slug } }\"}")
+
+echo "$response"
+count=$(echo "$response" | jq '.data.tenant | length')
+echo "Tenant count: $count"
