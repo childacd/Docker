@@ -1,0 +1,165 @@
+OK，这次我完全按照 你说的思路 来做，不拧巴、不兜底层原理，不讲“为什么不可能”，我们就实现你要的东西：
+
+	✅ 用 mc ls（不递归）
+✅ 拿到当前 bucket 下一级目录
+✅ 再用 mc ls 拿到二级目录
+✅ 用 awk、管道拼起来
+
+并且我不扫描更深层，严格只看二级 prefix。
+（虽然会漏掉更深层的文件，但你自己对准确性有容忍）
+
+✅ 你的需求抽象
+
+目标 bucket：
+
+myminio/bucket/foo
+
+结构示意：
+
+foo/
+ ├─ A/
+ │   ├─ sub1/
+ │   ├─ sub2/
+ ├─ B/
+ │   ├─ sub3/
+ │   ├─ sub4/
+
+你要得到：
+
+A/sub1
+A/sub2
+B/sub3
+B/sub4
+
+✅ 第一步：列出一级目录
+
+mc ls myminio/bucket/foo | awk '{print $5}'
+
+输出类似：
+
+A/
+B/
+C/
+
+✅ 第二步：对每个一级目录再 ls 一次，列出二级目录
+
+完整脚本：
+
+#!/bin/bash
+
+TOP="myminio/bucket/foo"
+
+mc ls $TOP | awk '{print $5}' | while read level1
+do
+    # 去掉末尾的 '/'
+    level1=${level1%/}
+
+    mc ls "$TOP/$level1" | awk '{print $5}' | while read level2
+    do
+        level2=${level2%/}
+        echo "$level1/$level2"
+    done
+done
+
+运行输出：
+
+A/sub1
+A/sub2
+B/sub3
+…
+
+✅ 完全符合你的逻辑
+用两次 mc ls，配套 awk。
+
+✅ 要“同时看二级目录的大小”？
+
+你可以这么写：
+
+#!/bin/bash
+
+TOP="myminio/bucket/foo"
+
+mc ls $TOP | awk '{print $5}' | while read level1
+do
+    level1=${level1%/}
+    mc ls "$TOP/$level1" | awk '{print $5}' | while read level2
+    do
+        level2=${level2%/}
+        echo "== $level1/$level2 =="
+        mc du "$TOP/$level1/$level2"
+    done
+done
+
+输出类似：
+
+== A/sub1 ==
+50MiB    210 objects
+
+== A/sub2 ==
+80MiB    556 objects
+
+== B/sub3 ==
+120MiB   930 objects
+
+✅ 如果你只想列目录（不包含文件）
+
+加 grep "/$"：
+
+mc ls $TOP | awk '{print $5}' | grep '/$' ...
+
+✅ 如果你希望把所有嵌套目录拼成一列
+
+可以：
+
+mc ls $TOP | awk '{print $5}' | while read level1
+do
+    level1=${level1%/}
+    mc ls "$TOP/$level1" | awk '{print $5}' | grep '/$' | while read level2
+    do
+        level2=${level2%/}
+        echo "$level1/$level2"
+    done
+done
+
+✅ 注意：你的方案的特点（你自己应当知道）：
+	•	✅ 不会递归扫描深层 → 快
+	•	✅ Shell 逻辑简单
+	•	✅ 符合 folder mental model
+	•	❌ 无法统计二级目录下深层（第 3+ 层）的对象大小
+
+但既然你接受这种 trade-off，这种方案完全 OK。
+
+✅ 一键可运行最终版：
+
+TOP="myminio/bucket/foo"
+
+mc ls "$TOP" | awk '{print $5}' | grep '/$' | while read level1
+do
+    level1=${level1%/}
+    mc ls "$TOP/$level1" | awk '{print $5}' | grep '/$' | while read level2
+    do
+        level2=${level2%/}
+        echo "== $level1/$level2 =="
+        mc du "$TOP/$level1/$level2"
+    done
+done
+
+✅ 你问我执行逻辑，我就按你逻辑实现
+
+你不要递归，OK
+你只要二级 prefix，OK
+不用 jq，也 OK
+只用 mc ls + awk，也 OK
+
+这套脚本已经是你脑内模型的直接实现。
+
+如果你还想：
+	•	按大小排序
+	•	top N
+	•	输出成 CSV
+	•	并发加速（xargs -P）
+	•	JSON 格式输出
+
+我都能继续扩展 😎
+
+你随时说。
