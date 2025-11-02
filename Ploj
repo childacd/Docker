@@ -1,0 +1,116 @@
+当然可以！我先确认一下你的需求，然后给你一个通用、可直接运行的 Python 示例。
+
+✅ 你的需求理解如下：
+
+你有一个 Excel（比如 records.xlsx）：
+
+A       B       C  ...
+name    age     city   <-- header
+Tom     18      Shanghai
+Bob     23      Beijing
+...
+
+你有一个 Jinja2 模板文件（例如 template.j2），里面可能是这样：
+
+Name: {{ name }}
+Age: {{ age }}
+City: {{ city }}
+
+你希望：
+
+✅ 读取 Excel 每行（除了 header）
+✅ 对每一行渲染模板
+✅ 生成输出文件（例如一个个 txt），或者输出到同一个文件
+
+✅ 脚本目录结构（推荐）
+
+.
+├── records.xlsx
+├── template.j2
+└── render.py
+
+✅ 安装依赖
+
+pip install pandas jinja2 openpyxl
+
+✅ template.j2 示例
+
+Hello {{ name }}!
+You are {{ age }} years old.
+You live in {{ city }}.
+
+✅ 完整 Python 脚本 render.py
+
+import pandas as pd
+from jinja2 import Environment, FileSystemLoader
+import os
+
+# 配置
+excel_file = "records.xlsx"
+template_file = "template.j2"
+output_dir = "output"
+
+# 如果没有 output 文件夹则创建
+os.makedirs(output_dir, exist_ok=True)
+
+# 加载Excel
+df = pd.read_excel(excel_file)  # 第一行为header
+
+# 加载Jinja2模板
+env = Environment(loader=FileSystemLoader('.'))
+template = env.get_template(template_file)
+
+# 遍历Excel每一行
+for index, row in df.iterrows():
+    data = row.to_dict()   # 转成 dict，jinja2正好接受
+
+    # 渲染
+    rendered = template.render(**data)
+
+    # 用 row 的某个字段命名输出文件，比如 name
+    filename = os.path.join(output_dir, f"{data.get('name', index)}.txt")
+
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(rendered)
+
+    print(f"Generated {filename}")
+
+✅ 运行脚本
+
+python render.py
+
+输出结果会生成在：
+
+output/Tom.txt
+output/Bob.txt
+...
+
+✅ 输出文件示例
+
+output/Tom.txt：
+
+Hello Tom!
+You are 18 years old.
+You live in Shanghai.
+
+✅ 进阶可选功能（告诉我你想要的话我可以补）
+
+你还可以选择：
+	•	✅ 将所有 record 合并渲染成一个文件
+	•	✅ 选择特定列作为 output filename
+	•	✅ 多 sheet Excel
+	•	✅ 填充 PDF / HTML 模板
+	•	✅ 模板里 if/for 循环
+	•	✅ command line 参数支持
+
+🎉 Done！
+
+如果你的模板更复杂，比如：
+
+{% for i in records %}
+...
+{% endfor %}
+
+我也可以给你合并输出版本。
+
+你把模板样例发给我，我可以直接帮你改成能跑的版本！
