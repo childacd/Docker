@@ -1,0 +1,2 @@
+grep -q "^LOGDIR:" "$TARGET_FILE" && \
+sed -i "s|^LOGDIR: '.*'|LOGDIR: '/home/${NEW_USER}/logs'|" "$TARGET_FILE"
