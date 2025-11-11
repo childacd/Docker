@@ -1,0 +1,32 @@
+CREATE EXTERNAL TABLE IF NOT EXISTS s3_access_logs.server_access_log (
+  bucket_owner           STRING,
+  bucket                 STRING,
+  request_datetime       STRING,
+  remote_ip              STRING,
+  requester              STRING,
+  request_id             STRING,
+  operation              STRING,
+  key                    STRING,
+  request_uri            STRING,
+  http_status            STRING,
+  error_code             STRING,
+  bytes_sent             BIGINT,
+  object_size            BIGINT,
+  total_time             INT,
+  turnaround_time        INT,
+  referrer               STRING,
+  user_agent             STRING,
+  version_id             STRING,
+  host_id                STRING,
+  sigv                   STRING,
+  cipher_suite           STRING,
+  auth_type              STRING,
+  endpoint               STRING,
+  tls_version            STRING
+)
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.RegexSerDe'
+WITH SERDEPROPERTIES (
+  "input.regex" = "([^ ]*) ([^ ]*) \\[([^\\]]*)\\] ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*)"
+)
+LOCATION 's3://<YOUR_LOG_BUCKET>/'
+TBLPROPERTIES ("skip.header.line.count"="0");
