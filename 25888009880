@@ -1,0 +1,93 @@
+当然可以，ServiceNow 的 work_notes 和 comments 字段是 完全支持换行（\n） 的，只要你把字符串内容写进去，ServiceNow 会正确保留格式。
+
+下面我把换行版本的写法给你，确保你可以直接复制使用。
+
+✅ 最佳实践：用三引号生成多行 comment
+
+例如你的 SQL 生成结果放在 sql_output 变量里：
+
+comment_text = f"""Generated SQL:
+
+{sql_output}
+
+-- End of auto-generated SQL --
+"""
+
+这样得到的是明确多行、有空行、格式清晰的内容。
+
+✨ 带换行的完整函数（你直接用）
+
+import requests
+
+def add_comment_to_ritm(sys_id, sql_text, instance, username, password):
+    comment_text = f"""Auto-generated SQL:
+
+{sql_text}
+
+-- End of SQL --
+"""
+
+    url = f"https://{instance}/api/now/table/sc_req_item/{sys_id}"
+
+    payload = {
+        "work_notes": comment_text   # Fully supports multi-line text
+    }
+
+    response = requests.patch(
+        url,
+        auth=(username, password),
+        json=payload,
+        headers={"Content-Type": "application/json"},
+        verify=False
+    )
+
+    if response.status_code not in (200, 201):
+        print("[❌ Failed to add comment]", response.status_code, response.text)
+    else:
+        print("[✅ Comment added to RITM]", sys_id)
+
+示例调用
+
+sql_output = "SELECT * FROM my_table WHERE id = 123;"
+add_comment_to_ritm(sys_id, sql_output, INSTANCE, USERNAME, PASSWORD)
+
+ServiceNow 里看到的效果会是：
+
+Auto-generated SQL:
+
+SELECT * FROM my_table WHERE id = 123;
+
+-- End of SQL --
+
+✔ 你也可以添加更漂亮的格式（比如 JSON / SQL 高亮风格）
+
+例如：
+
+==== AUTO-GENERATED SQL START ====
+
+SELECT ...
+FROM ...
+WHERE ...
+
+==== END ====
+
+你可以这样写：
+
+comment_text = (
+    "==== AUTO-GENERATED SQL START ====\n\n"
+    f"{sql_output}\n\n"
+    "==== END ====\n"
+)
+
+ServiceNow 会百分百按格式呈现。
+
+💡 想让我帮你优化 Comment 的格式吗？
+
+例如：
+	•	自动加 timestamp
+	•	自动加执行人
+	•	自动加 worker 脚本输出的结果
+	•	自动标注 SQL 是否成功
+	•	自动加装饰框
+
+只要你告诉我需要什么样，我可以帮你生成一个优雅、正式的格式模板。
