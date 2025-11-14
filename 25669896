@@ -1,0 +1,174 @@
+没问题，我现在帮你把整个功能 一次性串起来：
+	1.	提取多个 JSON 对象
+	2.	写入到一个临时文件（位于当前 Python 脚本同级目录）
+	3.	调用另一个 Python 脚本，并把这个临时文件作为参数传进去
+	4.	你可以自己替换 Dummy 的其它参数
+
+我会给你一个 完整可直接复制运行 的版本。
+
+✅ 你最终会得到的目录结构（示例）
+
+your_project/
+    poll.py               ← 你当前的轮询脚本
+    worker.py             ← 你要调用的另一个脚本
+    tmp_requests_xxxxx.json  ← 自动生成的临时文件
+
+✨ Step 1 — 写一个函数：把 extracted JSON list 写入 temp 文件
+
+✔ 写入文件格式：标准 JSON array
+
+（这样 worker.py 可以方便读取）
+
+我给你写：write_temp_json_file(json_data)
+返回文件路径，用于下一步调用脚本。
+
+import json
+import os
+import uuid
+
+def write_temp_json_file(json_data):
+    """
+    Write extracted JSON objects into a temporary file
+    located in the same directory as the current script.
+    Returns the file path.
+    """
+    filename = f"tmp_requests_{uuid.uuid4().hex}.json"
+    filepath = os.path.join(os.path.dirname(__file__), filename)
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(json_data, f, indent=4)
+
+    print(f"[Temp File Created] {filepath}")
+    return filepath
+
+✨ Step 2 — 调用另一个 Python 脚本（worker.py）
+
+我假设你要运行的脚本是：
+
+python worker.py --input <temp_file> --env dev --retry 3
+
+你可以用 subprocess.run()：
+
+import subprocess
+
+def run_worker_script(input_file_path):
+    """
+    Call worker.py with the extracted temp file and some dummy arguments.
+    """
+    cmd = [
+        "python",
+        "worker.py",            # your other script
+        "--input", input_file_path,
+        "--env", "dev",         # dummy arg
+        "--retry", "3"          # dummy arg
+    ]
+
+    print("[Running Worker Script] ", " ".join(cmd))
+
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True
+    )
+
+    print("[Worker Output]")
+    print(result.stdout)
+    if result.stderr:
+        print("[Worker Errors]")
+        print(result.stderr)
+
+后续你自己把 "--env" "dev" "--retry" 3" 换成你需要的就可以。
+
+✨ Step 3 — 在轮询的逻辑里加入这两步
+
+我给你一个整合到 poll 内部的代码段：
+
+for item in data:
+    description = item.get("description") or ""
+    section = extract_json_section(description)
+    requests_json = extract_json_objects(section)
+
+    print("Parsed JSON requests:", requests_json)
+
+    if requests_json:
+        # Step 1: write JSON to temp file
+        temp_file = write_temp_json_file(requests_json)
+
+        # Step 2: call worker script
+        run_worker_script(temp_file)
+
+当你的 ServiceNow 里出现新的 RITM →
+你的脚本会自动：
+	1.	捕获 JSON array
+	2.	写入 temp 文件
+	3.	调用 worker.py + 把 temp 文件作为参数
+
+🎉 下面给你一个最终“整合版本”片段（你直接复制即可）
+
+import os
+import uuid
+import json
+import subprocess
+
+def write_temp_json_file(json_data):
+    filename = f"tmp_requests_{uuid.uuid4().hex}.json"
+    filepath = os.path.join(os.path.dirname(__file__), filename)
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(json_data, f, indent=4)
+
+    print(f"[Temp File Created] {filepath}")
+    return filepath
+
+
+def run_worker_script(input_file_path):
+    cmd = [
+        "python",
+        "worker.py",            # another python script
+        "--input", input_file_path,
+        "--env", "dev",         # dummy param
+        "--retry", "3"          # dummy param
+    ]
+
+    print("[Running Worker Script] ", " ".join(cmd))
+
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True
+    )
+
+    print("[Worker Output]")
+    print(result.stdout)
+
+    if result.stderr:
+        print("[Worker Errors]")
+        print(result.stderr)
+
+然后在你的轮询脚本里加入：
+
+json_list = extract_json_objects(section)
+
+if json_list:
+    temp_file = write_temp_json_file(json_list)
+    run_worker_script(temp_file)
+
+✔ 你现在可以测试完整流程：
+	1.	在 SN 新建一个 RITM
+	2.	description 里写
+
+JSON Array of requests: {…}, {…}, ...
+
+
+	3.	轮询脚本会立即捕获
+	4.	自动生成一个 tmp_requests_xxxx.json
+	5.	自动调用你的 worker.py
+
+如果你愿意，我还可以帮你：
+	•	自动把 tmp 文件处理后删除
+	•	给 temp 文件加 timestamp 命名规则
+	•	改成 Linux 服务（systemd）长期后台运行
+	•	改成 Windows 服务
+	•	或者改成 Docker 容器
+
+你现在想进一步扩展哪一块？
