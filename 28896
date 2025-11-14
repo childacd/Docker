@@ -1,0 +1,83 @@
+import requests
+import time
+from datetime import datetime, timedelta
+
+# ----------------------------------------
+# 🔧 Fill in your ServiceNow credentials
+# ----------------------------------------
+INSTANCE = "<your_instance>"       # e.g. "dev12345"
+USERNAME = "<your_username>"
+PASSWORD = "<your_password>"
+ASSIGNMENT_GROUP_SYS_ID = "<your_group_sys_id>"
+
+# ----------------------------------------
+# 🕒 Initialize last_check_time = 1 minute ago
+#    So the script can catch recent RITMs on startup
+# ----------------------------------------
+last_check_time = (datetime.utcnow() - timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M:%S")
+
+API_URL = f"https://{INSTANCE}.service-now.com/api/now/table/sc_req_item"
+
+
+def poll_servicenow():
+    global last_check_time
+
+    # Build sysparm_query
+    query = (
+        f"assignment_group={ASSIGNMENT_GROUP_SYS_ID}"
+        f"^stateNOT IN3,4,7"
+        f"^sys_updated_on>{last_check_time}"
+    )
+
+    params = {
+        "sysparm_query": query,
+        "sysparm_fields": "number,short_description,sys_id,sys_created_on,sys_updated_on,cat_item,assignment_group,state",
+        "sysparm_display_value": "true",
+        "sysparm_limit": "20"
+    }
+
+    print(f"\n[Polling] last_check_time = {last_check_time}")
+
+    response = requests.get(
+        API_URL,
+        auth=(USERNAME, PASSWORD),
+        params=params
+    )
+
+    if response.status_code != 200:
+        print("❌ Error:", response.status_code, response.text)
+        return
+
+    data = response.json().get("result", [])
+
+    if not data:
+        print("No new RITMs.")
+    else:
+        print(f"✅ Found {len(data)} new RITM(s):")
+
+        for item in data:
+            print("-------------------------------------------------")
+            print(f"RITM Number: {item.get('number')}")
+            print(f"Short Description: {item.get('short_description')}")
+            print(f"Created On: {item.get('sys_created_on')}")
+            print(f"Updated On: {item.get('sys_updated_on')}")
+            print(f"Catalog Item: {item.get('cat_item')}")
+            print(f"State: {item.get('state')}")
+            print("-------------------------------------------------")
+
+        # Update last_check_time using the latest sys_updated_on
+        new_times = [i["sys_updated_on"] for i in data]
+        last_check_time = max(new_times)
+
+
+# ----------------------------------------
+# ⏳ Poll every 10 seconds
+# ----------------------------------------
+if __name__ == "__main__":
+    print("🚀 Start polling ServiceNow RITMs (every 10 seconds)...")
+    while True:
+        try:
+            poll_servicenow()
+        except Exception as e:
+            print("⚠️ Exception:", str(e))
+        time.sleep(10)
