@@ -1,0 +1,49 @@
+import io.minio.*;
+import io.minio.messages.Item;
+import io.minio.errors.*;
+import java.util.List;
+
+public class MinioTest {
+    public static void main(String[] args) {
+        try {
+            // Create a Minio Client
+            MinioClient minioClient =
+                MinioClient.builder()
+                    .endpoint("https://xxxxx.amazonaws.com")   // 你的 endpoint
+                    .credentials("AKIAxxxx", "xxxxxxxx")       // 你的 AK / SK
+                    .build();
+
+            // 要 ls 的 bucket 名字
+            String bucketName = "your-bucket-name";
+
+            // 先检查 bucket 是否存在（可选）
+            boolean found = minioClient.bucketExists(
+                BucketExistsArgs.builder().bucket(bucketName).build()
+            );
+            if (!found) {
+                System.out.println("Bucket does not exist: " + bucketName);
+                return;
+            }
+
+            System.out.println("Objects in bucket: " + bucketName);
+
+            // 相当于 `mc ls`，列出这个 bucket 里的对象
+            Iterable<Result<Item>> results =
+                minioClient.listObjects(
+                    ListObjectsArgs.builder()
+                        .bucket(bucketName)
+                        .recursive(true)   // 递归列出“子目录”
+                        .build()
+                );
+
+            for (Result<Item> result : results) {
+                Item item = result.get();
+                System.out.println(item.objectName());
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.err.println("Error occurred: " + e.getMessage());
+        }
+    }
+}
