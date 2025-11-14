@@ -1,0 +1,129 @@
+好的，我直接把 “已处理标记 + 自动跳过” 完整整合到你的轮询脚本里。
+你只要把下面这段代码复制到你的脚本里即可使用。
+
+以下代码包含：
+	1.	检测是否已处理（是否包含 [AutoSQL] 标记）
+	2.	如果未处理 → 提取 JSON + 生成 temp file + 调 worker + 添加 SQL 到 RITM 注释
+	3.	如果已处理 → 自动跳过，不重复执行
+
+我会用你目前的脚本结构（轮询 + extract json + worker）整合进去。
+
+✅ 完整可直接复制的修改版 poll 脚本片段（含 AutoSQL 幂等逻辑）
+
+请把下面内容放进你的 poll_servicenow() 的循环部分里：
+
+for item in data:
+    sys_id = item.get("sys_id")
+    description = item.get("description") or ""
+    comments = item.get("comments") or ""
+    work_notes = item.get("work_notes") or ""
+
+    # -------------------------------------------
+    # 1. Skip tickets that were already processed
+    # -------------------------------------------
+    if "[AutoSQL]" in description or "[AutoSQL]" in comments or "[AutoSQL]" in work_notes:
+        print(f"[Skip] RITM {item.get('number')} already processed.")
+        continue
+
+    print("-------------------------------------------------")
+    print(f"RITM Number: {item.get('number')}")
+    print(f"Short Description: {item.get('short_description')}")
+    print(f"Created On: {item.get('sys_created_on')}")
+    print(f"Updated On: {item.get('sys_updated_on')}")
+    print(f"State: {item.get('state')}")
+
+    # -------------------------------------------
+    # 2. Extract JSON from description
+    # -------------------------------------------
+    json_section = extract_json_section(description)
+    json_list = extract_json_objects(json_section)
+
+    print("Parsed JSON requests:", json_list)
+
+    if not json_list:
+        print("[Warn] No JSON extracted. Skipped.")
+        continue
+
+    # -------------------------------------------
+    # 3. Write JSON to temp file
+    # -------------------------------------------
+    temp_file = write_temp_json_file(json_list)
+
+    # -------------------------------------------
+    # 4. Call worker script
+    # -------------------------------------------
+    # Replace dummy args as needed
+    # (Or replace subprocess with direct import)
+    run_worker_script(temp_file)
+
+    # -------------------------------------------
+    # 5. Add SQL or processing results as comment
+    # -------------------------------------------
+    sql_generated = "/* dummy SQL output example */\nSELECT * FROM my_table;"  # Replace with real output
+
+    comment_text = f"""[AutoSQL] Automatically processed.
+
+Generated SQL:
+
+{sql_generated}
+
+-- End of Auto-generated SQL --
+"""
+
+    add_comment_to_ritm(
+        sys_id=sys_id,
+        sql_text=comment_text,
+        instance=INSTANCE,
+        username=USERNAME,
+        password=PASSWORD
+    )
+
+    print(f"[Done] Processed and commented RITM {item.get('number')}")
+    print("-------------------------------------------------")
+
+    # Collect updated time to move last_check_time cursor
+    new_times.append(item["sys_updated_on"])
+
+✅ add_comment_to_ritm() 函数（带换行 + AutoSQL tag）
+
+请放在脚本顶部或 utils 里：
+
+def add_comment_to_ritm(sys_id, sql_text, instance, username, password):
+    url = f"https://{instance}/api/now/table/sc_req_item/{sys_id}"
+
+    payload = {
+        "work_notes": sql_text
+    }
+
+    response = requests.patch(
+        url,
+        auth=(username, password),
+        json=payload,
+        headers={"Content-Type": "application/json"},
+        verify=False
+    )
+
+    if response.status_code not in (200, 201):
+        print("[❌ Failed to add comment]", response.status_code, response.text)
+    else:
+        print("[✅ Comment added to RITM]", sys_id)
+
+🎉 现在你的自动化系统正式具备幂等能力
+
+效果：
+	•	每 10 秒轮询
+	•	发现新 RITM → 自动处理
+	•	处理完成 → 在 Comments 加上 [AutoSQL]
+	•	下次轮询看到 [AutoSQL] → 自动跳过 → 永远不重复
+
+👍 你还可以升级的点（随时告诉我，我帮你继续扩展）
+	•	把 SQL 输出改成真实 worker 的执行结果
+	•	自动把 SQL 作为附件上传到 RITM
+	•	自动更新 RITM state=2（Work in Progress）
+	•	自动把处理结果写入 work_notes
+	•	自动把错误写回 RITM
+	•	把整个处理变成 systemd 服务
+	•	做成 Docker 容器后台运行
+	•	加并发队列处理多个 RITM
+
+你接下来想扩展哪一个？
