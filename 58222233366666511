@@ -1,0 +1,242 @@
+懂了，你的需求就是：
+
+	从一大段 description 文本里，自动批量提取所有 {...} 形式的 JSON 对象，不管有几条，都变成一个 list[dict]，而且这些 JSON 外面没有 []。
+
+这个完全可以做到，不需要你一条条截取。
+
+下面给你两部分：
+	1.	一个通用的“多 JSON 提取函数”（只需要传入 description 字符串）
+	2.	把它集成进你现在的轮询脚本的示例
+
+1️⃣ 通用函数：从混合文本中提取多个 JSON 对象
+
+说明：
+	•	会先定位 "JSON Array of requests" 这一段之后的内容
+	•	会在这段内容里用正则匹配所有 { ... }
+	•	每个 {...} 尝试用 json.loads 解析，成功的就加入结果列表
+	•	无论有 1 条、3 条、10 条，都自动提取
+
+import re
+import json
+
+def extract_json_section(description: str) -> str:
+    """
+    Cut the description to keep only the part after
+    'JSON Array of requests'. You can extend markers if needed.
+    """
+    marker = "JSON Array of requests"
+    idx = description.find(marker)
+    if idx == -1:
+        return ""
+
+    # Keep everything after the marker
+    text = description[idx + len(marker):]
+
+    # Optionally cut off trailing sections (Due date / Additional Comments etc.)
+    end_markers = [
+        "Due date:",
+        "How often should the copy be made?:",
+        "Approximate size of data to be copied:",
+        "Additional Comments:"
+    ]
+    end_idx = len(text)
+    for m in end_markers:
+        j = text.find(m)
+        if j != -1 and j < end_idx:
+            end_idx = j
+
+    return text[:end_idx]
+
+
+def extract_json_objects(text: str):
+    """
+    Extract multiple JSON objects from a text block.
+    Returns a list of dicts.
+    """
+    if not text:
+        return []
+
+    # Find all {...} blocks (no nested braces expected)
+    blocks = re.findall(r'\{[^{}]*\}', text, flags=re.DOTALL)
+
+    results = []
+    for block in blocks:
+        cleaned = block.strip().rstrip(',')  # remove trailing comma if any
+        try:
+            obj = json.loads(cleaned)
+            results.append(obj)
+        except json.JSONDecodeError:
+            # Skip invalid JSON blocks silently, or log if you want
+            # print("Failed to parse JSON block:", cleaned)
+            continue
+
+    return results
+
+你可以自己用一个示例字符串测试一下（我用的是仿造你截图的结构）：
+
+sample = """
+-----------Request Details-----------
+JSON Array of requests: {
+    "source":"dremio-stg-log-backup/.../access.log",
+    "destination":"ssz-temp-test-kim/access.log"
+},
+{
+    "source":"dremio-stg-log-backup/.../gc.log",
+    "destination":"ssz-temp-test-kim/gc.log"
+}
+
+Due date: 2025-09-23
+How often should the copy be made?: Once
+Approximate size of data to be copied: 1M
+Additional Comments:
+-------------------------------------
+"""
+
+section = extract_json_section(sample)
+json_list = extract_json_objects(section)
+print(json_list)
+# [
+#   {'source': 'dremio-stg-log-backup/.../access.log', 'destination': 'ssz-temp-test-kim/access.log'},
+#   {'source': 'dremio-stg-log-backup/.../gc.log', 'destination': 'ssz-temp-test-kim/gc.log'}
+# ]
+
+2️⃣ 集成到你现有的轮询脚本里
+
+你现在轮询脚本里只需要做 3 件事：
+	1.	在 sysparm_fields 里加上 description
+	2.	引入上面两个函数
+	3.	在 for item in data: 里面，对 description 调用解析
+
+示例（只展示关键改动，英文注释）：
+
+import requests
+import time
+from datetime import datetime, timedelta
+import re
+import json
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+INSTANCE = "<your_full_domain>"   # e.g. "dev12345.service-now.com"
+USERNAME = "<your_username>"
+PASSWORD = "<your_password>"
+ASSIGNMENT_GROUP_SYS_ID = "<your_group_sys_id>"
+
+API_URL = f"https://{INSTANCE}/api/now/table/sc_req_item"
+last_check_time = (datetime.utcnow() - timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def extract_json_section(description: str) -> str:
+    marker = "JSON Array of requests"
+    idx = description.find(marker)
+    if idx == -1:
+        return ""
+    text = description[idx + len(marker):]
+
+    end_markers = [
+        "Due date:",
+        "How often should the copy be made?:",
+        "Approximate size of data to be copied:",
+        "Additional Comments:"
+    ]
+    end_idx = len(text)
+    for m in end_markers:
+        j = text.find(m)
+        if j != -1 and j < end_idx:
+            end_idx = j
+
+    return text[:end_idx]
+
+
+def extract_json_objects(text: str):
+    if not text:
+        return []
+
+    blocks = re.findall(r'\{[^{}]*\}', text, flags=re.DOTALL)
+    results = []
+    for block in blocks:
+        cleaned = block.strip().rstrip(',')
+        try:
+            obj = json.loads(cleaned)
+            results.append(obj)
+        except json.JSONDecodeError:
+            continue
+    return results
+
+
+def poll_servicenow():
+    global last_check_time
+
+    query = (
+        f"assignment_group={ASSIGNMENT_GROUP_SYS_ID}"
+        f"^stateNOT IN3,4,7"
+        f"^sys_updated_on>{last_check_time}"
+    )
+
+    params = {
+        "sysparm_query": query,
+        "sysparm_fields": "number,short_description,description,sys_id,sys_created_on,sys_updated_on,cat_item,assignment_group,state",
+        "sysparm_display_value": "true",
+        "sysparm_limit": "20"
+    }
+
+    print(f"\n[Polling] last_check_time = {last_check_time}")
+
+    response = requests.get(
+        API_URL,
+        auth=(USERNAME, PASSWORD),
+        params=params,
+        verify=False,   # dev only, with warning disabled above
+        timeout=10
+    )
+
+    if response.status_code != 200:
+        print("Error:", response.status_code, response.text)
+        return
+
+    data = response.json().get("result", [])
+
+    if not data:
+        print("No new RITMs.")
+    else:
+        print(f"Found {len(data)} new RITM(s):")
+
+        new_times = []
+
+        for item in data:
+            print("-------------------------------------------------")
+            print(f"RITM Number: {item.get('number')}")
+            print(f"Short Description: {item.get('short_description')}")
+            print(f"Created On: {item.get('sys_created_on')}")
+            print(f"Updated On: {item.get('sys_updated_on')}")
+            print(f"State: {item.get('state')}")
+            # ---- Parse JSON array in description ----
+            description = item.get("description") or ""
+            section = extract_json_section(description)
+            requests_json = extract_json_objects(section)
+            print("Parsed JSON requests:", requests_json)
+            print("-------------------------------------------------")
+
+            if item.get("sys_updated_on"):
+                new_times.append(item["sys_updated_on"])
+
+        if new_times:
+            last_check_time = max(new_times)
+
+
+if __name__ == "__main__":
+    print("Start polling ServiceNow RITMs (every 10 seconds)...")
+    while True:
+        try:
+            poll_servicenow()
+        except Exception as e:
+            print("Exception:", str(e))
+        time.sleep(10)
+
+这样，当你在 ServiceNow 的 description 里填上那一段：
+	•	“JSON Array of requests: { … }, { … } …”
+	•	脚本就会自动把所有 {...} 解析成 Python dict 列表打印出来
+	•	有几条就拿几条，不需要你手动数或截取
+
+如果你后面决定把 description 的格式稍微规范一点（比如真的包一层 []），这个函数也可以轻松改成直接 json.loads() 整个数组，到时候我可以再帮你升级到“标准 JSON 版本”。
