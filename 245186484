@@ -1,0 +1,178 @@
+好的！这个需求非常典型：
+“轮询 ServiceNow RITM → 自动添加评论 → 已处理过的就跳过”。
+我给你一个 完整、可运行、鲁棒性强的 Python 解决方案，并带你解释每一步。
+
+🧩 你的需求拆解：
+
+✔ 每 X 分钟轮询一次 ServiceNow RITM 表
+
+✔ 根据 filter 拿到最近 1 小时内新创建的 RITM
+
+✔ 给每个 RITM 添加一个自动 comment
+
+✔ 下次轮询时如果已经添加过我们的 comment → 必须跳过
+
+✔ 不会重复处理同一个 RITM（幂等）
+
+🟦 设计思路
+
+为了避免重复处理，我们有 2 种方式：
+
+🅰 方法 A（最稳健，推荐）：
+
+在记录里打一个“已处理标记（sys_tags 或某个字段）”
+
+如果你有权限加字段，可以在 RITM 里加：
+
+u_auto_sql_added = true
+
+但你可能不想或不能改表结构。
+
+🅱 方法 B（通用，不改表结构）：
+
+检查 RITM 的 comment 是否已经包含我们自动加的文本 → 如果有，就跳过
+
+例如你自动加的评论格式：
+
+[Auto-SQL-Added]
+<真实 SQL 内容>
+
+下一次只要 comment 里存在 [Auto-SQL-Added]，就不再处理。
+
+这是最常用、无需改表最安全的方法。
+
+🟩 我将采用 方法 B（检查 comment whether exists）
+
+完全不用改表，你可以直接运行。
+
+🚀 最终完整 Python 代码（推荐使用）
+
+import requests
+import json
+from datetime import datetime, timedelta
+
+
+SN_INSTANCE = "https://xxxxx.service-now.com"
+SN_USER = "xxx"
+SN_PASS = "xxx"
+
+HEADERS = {"Content-Type": "application/json"}
+
+
+def get_recent_ritms(hours=1):
+    """获取最近 N 小时新建的 RITM"""
+    now = datetime.utcnow()
+    past_time = now - timedelta(hours=hours)
+
+    # sys_created_on >= past_time
+    query_time = past_time.strftime("%Y-%m-%d %H:%M:%S")
+
+    url = f"{SN_INSTANCE}/api/now/table/sc_req_item"
+
+    params = {
+        "sysparm_query": f"sys_created_on>=javascript:gs.dateGenerate('{query_time}')",
+        "sysparm_fields": "sys_id,number,sys_created_on",
+        "sysparm_limit": "200"
+    }
+
+    resp = requests.get(url, auth=(SN_USER, SN_PASS), headers=HEADERS, params=params)
+    resp.raise_for_status()
+    return resp.json()["result"]
+
+
+def ritm_has_auto_comment(ritm_sys_id):
+    """检查此 RITM 是否已经有我们自动添加的评论"""
+    url = f"{SN_INSTANCE}/api/now/table/sc_req_item/{ritm_sys_id}?sysparm_fields=comments"
+
+    resp = requests.get(url, auth=(SN_USER, SN_PASS), headers=HEADERS)
+    resp.raise_for_status()
+
+    comments = resp.json()["result"].get("comments", "")
+
+    return "[Auto-SQL-Added]" in comments
+
+
+def add_comment_to_ritm(ritm_sys_id, sql_text):
+    """给 RITM 添加多行 comment（真实换行）"""
+    auto_comment = f"[Auto-SQL-Added]\n{sql_text}"
+
+    payload = {
+        "comments": auto_comment
+    }
+
+    # 避免 \n 被 escape
+    body = json.dumps(payload, ensure_ascii=False).replace("\\n", "\n")
+
+    url = f"{SN_INSTANCE}/api/now/table/sc_req_item/{ritm_sys_id}"
+
+    resp = requests.patch(url, data=body, auth=(SN_USER, SN_PASS), headers=HEADERS)
+    resp.raise_for_status()
+    return True
+
+
+def process_new_ritms():
+    ritms = get_recent_ritms(hours=1)
+
+    for r in ritms:
+        sys_id = r["sys_id"]
+        number = r["number"]
+
+        # 1. 检查是否已经添加过自动 comment
+        if ritm_has_auto_comment(sys_id):
+            print(f"🔵 已处理过 {number}，跳过")
+            continue
+
+        # 2. 生成你的 SQL（这里直接举例）
+        sql_text = f"""
+INSERT INTO ICEBERG_CATALOG.xxx (
+ job_id,
+ job_name
+) VALUES (
+ 999,
+ 'test'
+);
+"""
+
+        # 3. 添加评论
+        add_comment_to_ritm(sys_id, sql_text)
+        print(f"🟢 已为 {number} 添加 Auto SQL 评论")
+
+
+if __name__ == "__main__":
+    process_new_ritms()
+
+🧠 这个代码做到了什么？
+
+✅ 每次运行只处理未处理过的 RITM
+
+✅ 通过 [Auto-SQL-Added] 判断是否已经做过
+
+✅ comment 里真实换行（不会出现 \n）
+
+✅ SQL 多行字符串格式完整
+
+✅ 你无需修改 ServiceNow 表结构
+
+🟧 为什么使用 [Auto-SQL-Added] 作为标记？
+
+因为：
+	•	不依赖自定义字段
+	•	不影响 ServiceNow 的真实业务字段
+	•	多次轮询呈现幂等行为
+	•	comment 可搜索
+	•	简单可靠
+
+如果你想，我可以：
+	•	改为用 sys_tags
+	•	或者用 attachment
+	•	或者把“已处理清单”存到 DynamoDB / local sqlite / local file
+
+看你需求。
+
+📩 下一步：
+
+只要你给我：
+	•	你实际过滤条件是什么？（比如 assignment_group、状态、priority 等）
+	•	你的 SQL 是怎么生成的（我可以帮你模块化）
+
+我可以帮你把这段代码完全改成你生产可用的版本。
