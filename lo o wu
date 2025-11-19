@@ -1,0 +1,52 @@
+可以，一行命令里把 Instance Name (tag:Name) 也一起打印出来。
+
+下面是一行命令，包含：
+	•	Instance ID
+	•	Instance Name
+	•	AMI ID
+	•	AMI Name
+	•	日期后缀（YYYY-MM-DD）并按日期排序
+
+✅ 一行命令（含 Instance Name）
+
+把 YourTagKey、YourTagValue、ap-southeast-1 改成你的：
+
+aws ec2 describe-instances --region ap-southeast-1 --filters "Name=tag:YourTagKey,Values=YourTagValue" --query 'Reservations[].Instances[].[InstanceId,ImageId,Tags]' --output text \
+| while read iid ami rest; do \
+    iname=$(echo "$rest" | sed -n 's/.*Name\s\+\([^ ]*\).*/\1/p'); \
+    aname=$(aws ec2 describe-images --image-ids "$ami" --region ap-southeast-1 --query "Images[0].Name" --output text); \
+    date=$(echo "$aname" | grep -oE "[0-9]{4}-[0-9]{2}-[0-9]{2}$"); \
+    echo -e "${date}\t${iid}\t${iname}\t${ami}\t${aname}"; \
+  done \
+| sort -k1,1
+
+📌 输出示例：
+
+2025-01-10  i-0123456789  web-prod-01   ami-0aaabbbb   myapp-prod-2025-01-10
+2025-05-03  i-0abcd12345  api-prod-02   ami-0cccdddd   myapp-prod-2025-05-03
+2025-09-12  i-0ffff22222  batch-prod-01 ami-0ffffaaa   myapp-prod-2025-09-12
+
+📝 解释（保证你能改）
+
+如何从 Tags 提取 Name？
+
+AWS CLI 输出 text 时，Tags 会变成一串：
+
+Key  Name  Value  web-prod-01  Key  Env  Value  Prod
+
+我们用 sed 抓：
+
+sed -n 's/.*Name\s\+\([^ ]*\).*/\1/p'
+
+抓到 web-prod-01。
+
+⚠️ 如果 Instance Name 有空格？
+
+例如 "Production Web Server A1"
+那你告诉我，我可以改成更强的 JSON 解析方案。
+
+✅ 需要我帮你改成 “不用 while，用纯 pipe+xargs 的超硬核一行版” 吗？
+
+可以，但可读性会更糟 😂
+
+如果你想要，我可以给你写一个极限压缩的版本。
