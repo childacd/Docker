@@ -1,0 +1,324 @@
+好的，我会在你之前的轮询框架基础上，加上：
+
+✔ 一个简单清晰的 POST /reprocess/{sys_id} API（FastAPI）
+	•	不依赖 checkpoint
+	•	不依赖自动轮询逻辑
+	•	强制重新处理
+	•	不考虑自动跳过
+	•	自己的逻辑由你填充
+
+✔ Kubernetes Deployment + Service
+	•	依然使用 PVC
+	•	同一个 Pod 内同时跑轮询和 API
+	•	结构简单、可直接用
+	•	把需要你填的部分都留成 TODO
+
+我会保持最简洁，不让你多承担复杂度。
+
+🚀 1. 完整主程序结构（轮询 + 手动 API）
+
+你会运行一个 Python 服务：
+	•	后台轮询（用线程）
+	•	前台提供 API（FastAPI）
+
+我帮你写完整框架，留好你要填的部分。
+
+🧩 app/main.py
+
+import os
+import time
+import threading
+from datetime import datetime
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+CHECKPOINT_FILE = "/data/checkpoint.txt"
+AUTO_MARK = "[AUTO_PROCESSED]"
+
+
+# ---------------------------------------
+# 1. Checkpoint utilities
+# ---------------------------------------
+def load_checkpoint(default="1970-01-01 00:00:00"):
+    if not os.path.exists(CHECKPOINT_FILE):
+        return default
+
+    with open(CHECKPOINT_FILE, "r") as f:
+        return f.read().strip()
+
+
+def atomic_save_checkpoint(value):
+    tmp_file = CHECKPOINT_FILE + ".tmp"
+
+    with open(tmp_file, "w") as f:
+        f.write(value)
+        f.flush()
+        os.fsync(f.fileno())
+
+    os.replace(tmp_file, CHECKPOINT_FILE)
+
+
+# ---------------------------------------
+# 2. ServiceNow API wrappers (YOU fill)
+# ---------------------------------------
+def query_api_since(timestamp):
+    """
+    TODO: 
+    调用 SN API:
+    - 查询 sys_created_on > timestamp 的 RITM 或 Request
+    - 返回 [{sys_id, sys_created_on, ...}]
+    """
+    raise NotImplementedError
+
+
+def get_work_notes(sys_id):
+    """
+    TODO:
+    调 SN API 查询 Work Notes:
+    GET /api/now/table/sys_journal_field?element_id={sys_id}&element=work_notes
+    返回 work note 列表
+    """
+    raise NotImplementedError
+
+
+def add_auto_worknote(sys_id, note_text=AUTO_MARK):
+    """
+    TODO:
+    POST Work Note:
+    element_id=sys_id
+    element=work_notes
+    value=note_text
+    """
+    raise NotImplementedError
+
+
+def process_item(item):
+    """
+    TODO:
+    实现你自己的业务逻辑：
+    - 解析 JSON
+    - 生成 SQL
+    - 调 SN API 写 comment
+    """
+    raise NotImplementedError
+
+
+# ---------------------------------------
+# 3. 去重机制：检查 Work Note
+# ---------------------------------------
+def has_auto_processed_note(sys_id):
+    try:
+        notes = get_work_notes(sys_id)
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch worknotes for {sys_id}: {e}")
+        return False
+
+    for n in notes:
+        if n and AUTO_MARK in n.get("value", ""):
+            return True
+
+    return False
+
+
+# ---------------------------------------
+# 4. Polling worker
+# ---------------------------------------
+def poll_once():
+    last_cp = load_checkpoint()
+    print(f"[INFO] Last checkpoint = {last_cp}")
+
+    try:
+        results = query_api_since(last_cp)
+    except Exception as e:
+        print(f"[ERROR] Failed to query API: {e}")
+        return
+
+    if not results:
+        print("[INFO] No new records.")
+        return
+
+    # 按创建时间排序
+    results.sort(key=lambda r: r["sys_created_on"])
+
+    for item in results:
+        sys_id = item["sys_id"]
+        created_on = item["sys_created_on"]
+
+        # Skip if already processed
+        if has_auto_processed_note(sys_id):
+            print(f"[SKIP] Already processed {sys_id}")
+            continue
+
+        # Process
+        try:
+            process_item(item)
+        except Exception as e:
+            print(f"[ERROR] Failed to process {sys_id}: {e}")
+            continue
+
+        # Add work note
+        try:
+            add_auto_worknote(sys_id)
+        except Exception as e:
+            print(f"[ERROR] Failed to add worknote for {sys_id}: {e}")
+            continue
+
+        # Update checkpoint
+        try:
+            atomic_save_checkpoint(created_on)
+        except Exception as e:
+            print(f"[ERROR] Failed to update checkpoint: {e}")
+            continue
+
+
+def poll_loop():
+    interval = int(os.getenv("POLL_INTERVAL", "60"))
+
+    while True:
+        poll_once()
+        time.sleep(interval)
+
+
+# ---------------------------------------
+# 5. Manual reprocess API
+# ---------------------------------------
+
+class ReprocessResponse(BaseModel):
+    sys_id: str
+    status: str
+
+
+@app.post("/reprocess/{sys_id}", response_model=ReprocessResponse)
+def reprocess(sys_id: str):
+    """
+    强制重新处理某一条 request:
+    - 不检查 AUTO_PROCESSED
+    - 不检查 checkpoint
+    """
+    print(f"[API] Forced reprocess for {sys_id}")
+
+    # 1. 拉取完整记录
+    item = query_single_item(sys_id)  # TODO: 你来补充 API
+
+    # 2. 强制处理
+    try:
+        process_item(item)
+    except Exception as e:
+        return ReprocessResponse(sys_id=sys_id, status=f"FAILED: {e}")
+
+    # 3. 写一个特殊 Work Note
+    try:
+        add_auto_worknote(sys_id, "[AUTO_REPROCESSED]")
+    except Exception as e:
+        return ReprocessResponse(sys_id=sys_id, status=f"REPROCESSED but failed to add worknote: {e}")
+
+    return ReprocessResponse(sys_id=sys_id, status="OK")
+
+
+# ---------------------------------------
+# 6. Start polling thread on startup
+# ---------------------------------------
+def start_background_threads():
+    t = threading.Thread(target=poll_loop, daemon=True)
+    t.start()
+
+
+start_background_threads()
+
+你要填的 TODO：
+	•	query_api_since
+	•	get_work_notes
+	•	add_auto_worknote
+	•	process_item
+	•	query_single_item（手动 reprocess 用）
+
+API 和轮询完全隔离，互不干扰。
+
+🚀 2. Dockerfile（最小版本）
+
+FROM python:3.10-slim
+
+WORKDIR /app
+
+COPY app/ /app/
+
+RUN pip install fastapi uvicorn requests
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+你可以根据公司要求加上 proxy/env 等。
+
+🚀 3. Kubernetes Deployment + PVC + Service (最小可运行版)
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ritm-checkpoint-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: <your-default-storage-class>   # 可删掉
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ritm-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ritm-worker
+  template:
+    metadata:
+      labels:
+        app: ritm-worker
+    spec:
+      containers:
+        - name: worker
+          image: your-image-here
+          env:
+            - name: POLL_INTERVAL
+              value: "60"
+          volumeMounts:
+            - name: checkpoint-vol
+              mountPath: /data
+          ports:
+            - containerPort: 8000
+      volumes:
+        - name: checkpoint-vol
+          persistentVolumeClaim:
+            claimName: ritm-checkpoint-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ritm-api
+spec:
+  selector:
+    app: ritm-worker
+  ports:
+    - port: 80
+      targetPort: 8000
+      protocol: TCP
+  type: ClusterIP
+
+你可以改成 LoadBalancer / Ingress 自己暴露。
+
+🎯 最终效果（非常简洁、可用、可维护）
+	1.	自动轮询
+	•	按 checkpoint 获取增量数据
+	•	按 work note 去重
+	•	每条成功后写 checkpoint（atomic）
+	•	自动跑，无需人工干预
+	2.	手动 /reprocess 接口
+	•	强制重新处理某条 request
+	•	不看 checkpoint
+	•	不看 AUTO_PROCESSED
+	•	自动记录 AUTO_REPROCESSED
