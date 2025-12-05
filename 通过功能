@@ -1,0 +1,105 @@
+下面我给你一个 非常实用、符合 Nexus 实际结构 的排查方法，告诉你为什么不能直接访问目录、以及你 正确应该怎么查看某个包是否有其他版本。
+
+✅ 为什么你访问到 dependencies/ 就不行？
+
+Nexus（无论是 Nexus 2 或 Nexus 3）默认：
+	•	不允许通过浏览器直接列目录
+	•	不是一个真正的 HTTP 文件目录
+	•	你把文件名删除掉 → 不会自动列出目录内容
+→ 所以你看到 404 或无权限是正常的。
+
+Nexus 像 Maven、Conda、PyPI 仓库一样，是“内容地址化”，不是一个随便可浏览的目录。
+
+✅ 那我怎么查看 这个包还有哪些版本？
+
+你有三种方法，根据你们使用的是 什么格式的仓库（Conda、PyPI、Raw、Maven等）不同而选择。
+
+我猜你们的是 Conda 或 PyPI 或 Raw，因为你说是 tar.gz。
+
+🔍 方法 1：直接使用 Nexus 的 REST API（最准确）
+
+如果你知道 repository 名字（例子：my-repo），你可以访问：
+
+https://<nexus-domain>/service/rest/v1/search?repository=<repo-name>&name=<包名>
+
+例如：
+
+https://nexus.company.com/service/rest/v1/search?repository=my-conda&name=python
+
+会返回 JSON，里面包含：
+	•	所有版本
+	•	文件名
+	•	下载路径
+
+你可以把 <包名> 填成你 tar.gz 前面那部分的 artifact 名。
+
+🔍 方法 2：使用 conda search 或 pip install --index-url
+
+如果你用的是 Conda 私有仓库：
+（你前面的问题很像 Conda 私有 Nexus 仓库）
+
+你可以在 EC2 上执行：
+
+conda search python --channel https://<nexus-domain>/repository/<repo-name>
+
+这样 Conda 会从 metadata 里返回所有可用版本。
+
+如果你想看某个具体包：
+
+conda search my-package --channel <channel-url>
+
+如果你们仓库是 PyPI 格式：
+
+你可以用 pip 的 JSON API：
+
+https://<nexus-domain>/repository/<repo-name>/<package-name>/json
+
+即可获取所有版本。
+
+🔍 方法 3：Nexus UI 直接搜索（最简单）
+
+打开 Nexus GUI：
+
+https://<nexus-domain>/
+
+然后：
+
+Browse → 选 repository → 搜 package 名字 → 所有版本都会显示
+
+你搜这个 package 的名字（不是 URL 路径），Nexus 会列出：
+	•	version
+	•	format
+	•	文件名
+	•	具体 download URL
+
+❌ 哪些方法是行不通的？
+
+你刚才做的是：
+
+https://<domain>/repository/.../dependencies/
+
+然后希望：
+	•	Nexus 自动列目录
+	•	看到所有 .tar.gz
+
+这是不可能的，因为：
+
+✔ Nexus 不是 Apache HTTPD
+✔ 不允许列目录
+✔ URL 不能“推断”文件名
+✔ 必须依赖 metadata（index.json, repodata.json, maven metadata 等）
+
+🧭 你现在需要我帮你具体查你的包格式吗？
+
+你可以给我一个 包的 URL 示例（可以脱敏）：
+
+例如：
+
+https://nexus.company.com/repository/conda/linux-64/python-3.13.0-h1234abcd.tar.gz
+
+我可以立即告诉你：
+	•	这是 Conda, Maven, Raw 还是 PyPI 格式
+	•	应该用什么方法来列出其他版本
+	•	以及你 EC2 为什么 search 不到这个版本的原因（大概率是 repodata.json 缺失或权限问题）
+
+要不要我帮你分析？
