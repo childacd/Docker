@@ -1,0 +1,91 @@
+好的，我先教你 最通用、最快速、任何 Linux 都能用的抓取内部证书链的方法，你直接在 Amazon Linux / Mac / 本地 Linux 机器上执行即可。
+
+✅ 方法 1：用 openssl 抓取完整证书链（最常用）
+
+👉 运行下面这个命令：
+
+echo | openssl s_client -connect yum-cache.nomura.com:443 -showcerts
+
+如果端口不是 443，请改成你们仓库实际端口。
+
+📌 输出内容
+
+你会看到类似：
+
+CONNECTED(00000003)
+---
+Certificate chain
+ 0 s:/CN=yum-cache.nomura.com
+   i:/CN=Internal Intermediate CA
+-----BEGIN CERTIFICATE-----
+（证书 0）
+-----END CERTIFICATE-----
+ 1 s:/CN=Internal Intermediate CA
+   i:/CN=Internal Root CA
+-----BEGIN CERTIFICATE-----
+（证书 1）
+-----END CERTIFICATE-----
+ 2 s:/CN=Internal Root CA
+   i:/CN=Internal Root CA
+-----BEGIN CERTIFICATE-----
+（证书 2）
+-----END CERTIFICATE-----
+---
+SSL handshake has read XXX bytes and written XXX bytes
+
+你需要做的是：
+
+✔ 把每个 -----BEGIN CERTIFICATE----- 到 -----END CERTIFICATE----- 的内容复制出来
+
+分别保存为：
+
+server.crt
+intermediate.crt
+rootca.crt
+
+通常你只需要 rootCA + intermediateCA。
+
+✅ 方法 2：直接抓 RootCA（更精确）
+
+如果你只想要 issuer（上级 CA）的证书：
+
+echo | openssl s_client -connect yum-cache.nomura.com:443 -showcerts 2>/dev/null \
+  | awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/' > fullchain.pem
+
+然后你可以用：
+
+openssl x509 -in fullchain.pem -text -noout
+
+查看每段证书是谁签的。
+
+✅ 方法 3：用浏览器下载证书链（非常简单）
+
+Chrome / Edge：
+	1.	打开 URL：
+https://yum-cache.nomura.com
+	2.	点击地址栏的小锁
+	3.	选择 Connection is secure → Certificate is valid
+	4.	“Details”
+	5.	逐个选 Certificate hierarchy 的每个证书
+	6.	点击 Export → 选择 .cer 或 .pem
+
+这样你会得到：
+	•	Server certificate
+	•	Intermediate CA
+	•	Root CA
+
+📌 抓到证书之后，我再教你下一步：
+
+把证书放到：
+
+/etc/pki/ca-trust/source/anchors/
+
+然后：
+
+sudo update-ca-trust
+
+yum 就会恢复正常运行。
+
+如果你愿意，我可以帮你解析你抓到的证书链（是否完整、缺少哪一级）。
+
+你抓完把内容贴给我，我帮你分析下一步该怎么导入。
